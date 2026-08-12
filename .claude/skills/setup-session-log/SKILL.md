@@ -1,0 +1,183 @@
+---
+name: setup-session-log
+description: Scaffold the append-only session-log continuity system in a project — numbered, dated session logs chained by prev/next links, a SessionStart hook that auto-injects the chain head into every new/resumed session, and the maintenance protocol that keeps the chain growing instead of being overwritten. Invoke once per project (or when a project has no session_logs/ yet). Idempotent: re-running detects an existing chain and only repairs missing pieces.
+---
+
+# /setup-session-log — install the session-log continuity layer
+
+## What this installs and why
+
+Most memory systems keep **current state** (recall-optimized, deduplicated) and **raw transcripts** (lossless, verbose). What's missing is the curated middle layer: a compact per-session summary of *what was done* and *what's planned next*, in an **append-only linked chain** so a future session can reconstruct the project's evolution cheaply and audit whether each session did what the previous one asked. The old `for_next_session.md`-gets-overwritten pattern destroys that thread; this chain preserves it.
+
+Three components get installed:
+1. **The chain** — `<memory>/session_logs/session_NNN_YYYY-MM-DD.md`, one per session, linked by `prev:`/`next:` frontmatter, each carrying its `session_id`/`transcript` pointer (an index INTO the raw transcript).
+2. **The auto-inject hook** — a `SessionStart` hook (`inject_session_log.sh`) that prints the chain head into every new session's context. Deterministic — no reliance on the agent following a pointer, so no "read the log first" reminder is needed in CLAUDE.md. It also carries a built-in staleness check: if any file in the working tree (per `git status`) was modified after the chain head's own date, it prepends a `⚠ SESSION-LOG STALENESS WARNING` naming the newest offender — the chain can go stale silently otherwise (work happens without a session ever being logged for it), and nothing else catches that.
+3. **The maintenance protocol** — written into the project so `/sync-mem` (or session end) APPENDS a new log + continuity check rather than overwriting.
+
+## When to use
+
+- Setting up a new long-lived project where you want cross-session continuity.
+- A project that has memory (`MEMORY.md`) but no `session_logs/` chain yet.
+- Skip for one-off / throwaway sessions — the chain is overhead there (its value is curated history for *evolving* projects).
+
+## Procedure
+
+Run these steps. Everything is idempotent — check-before-write at each step.
+
+### Step 0 — Idempotency check
+Resolve `PROJECT` = current working directory. If `session_logs/` already exists with at least one `session_*.md`, the chain is set up: **don't re-scaffold**. Instead verify the hook + protocol are present (Steps 6–9) and report. Stop unless something's missing.
+
+### Step 1 — Resolve the memory dir (`MEM`)
+Find the directory that holds `MEMORY.md`:
+- If `PROJECT/.claude-memory/MEMORY.md` exists → `MEM = PROJECT/.claude-memory`.
+- Else if `PROJECT/.claude/memory/MEMORY.md` exists → `MEM = PROJECT/.claude/memory`.
+- Else find the auto-memory dir (the harness names it in the environment, typically `~/.claude/projects/<sanitized-cwd>/memory/`) and make it reachable from the project root — see the box below for **which direction to link**. If no memory exists at all yet, just create `PROJECT/.claude/memory/` and an empty `MEMORY.md` (no link needed).
+
+The hook resolves `PROJECT/.claude-memory/session_logs` (or `.claude/memory/session_logs`) at runtime, so `MEM` must be reachable under one of those.
+
+> **Never point a link from the project OUT to the auto-memory dir.** The obvious move —
+> `PROJECT/.claude-memory -> <auto-memory-dir>` — creates an **absolute host path** inside the project
+> tree. It works on the host and **breaks the moment the project is opened anywhere the host path does
+> not exist**: a devcontainer/Docker bind-mount, a remote/SSH workspace, a CI checkout, or another
+> machine. The editor follows the link into nothing and reports missing files. It also drags the raw
+> `.jsonl` transcripts (siblings of `memory/`) into the project tree if you link the *parent*.
+>
+> **Invert it instead** — real files in the repo, harness dir points at them:
+> ```sh
+> mkdir -p PROJECT/.claude/memory/store
+> cp -a <auto-memory-dir>/. PROJECT/.claude/memory/store/
+> mv <auto-memory-dir> <auto-memory-dir>.bak          # rollback until verified
+> ln -s PROJECT/.claude/memory/store <auto-memory-dir>
+> ```
+> The only symlink now lives under `~/.claude/`, where Claude Code (which runs on the **host**)
+> resolves it fine; the project tree contains real files that resolve in *every* namespace. Verify by
+> reading `<auto-memory-dir>/MEMORY.md` (through the link) and, if containerized,
+> `ls` the store from inside the container. Then delete the `.bak`.
+> Gitignore `store/` unless the memory is genuinely shareable — it carries machine-specific paths.
+
+### Step 2 — Create the chain directory
+`mkdir -p MEM/session_logs`.
+
+> **Frontmatter-normalizer caution.** Some harnesses run an auto-memory frontmatter normalizer that
+> rewrites *any* file inside the memory dir to the memory schema — nesting fields under `metadata:`,
+> stamping `originSessionId`, and **stripping non-schema keys like `prev`/`next`** (which breaks the
+> chain's doubly-linked frontmatter). The log *body* is unaffected either way; only the links matter.
+>
+> **The safe layout, which sidesteps this without any linking gymnastics:** keep the chain in the
+> project at `PROJECT/.claude/memory/session_logs/`, and — if you inverted the link in Step 1 — keep it
+> **as a sibling of `store/`, never inside it**:
+> ```
+> PROJECT/.claude/memory/
+>   ├── session_logs/   <- the chain. NOT the memory dir -> normalizer never reads it.
+>   └── store/          <- the memory dir the harness symlink points at. Normalized.
+> ```
+> The normalizer only walks the *memory dir*, so a project-local chain outside it is untouched — and
+> unlike the old `<memory-parent>/session_logs/` sibling trick, this needs no `.claude-memory` symlink
+> and therefore survives containers and remote workspaces (Step 1). Do not put the chain inside the
+> memory dir and then "work around" the normalizer; move the chain out instead.
+
+### Step 3 — Write the first log
+Determine **today's date** (pass it in; date functions are unavailable in skill contexts) and the **session_id** (the UUID in your scratchpad path `/tmp/claude-*/<UUID>/scratchpad`, which equals the newest `.jsonl` in the auto-memory's parent `projects/<cwd>/` dir). Write `MEM/session_logs/session_001_<today>.md`:
+
+```markdown
+---
+session: 001
+date: <today>
+session_id: <uuid>
+transcript: <path>/<uuid>.jsonl
+prev: null
+next: null
+---
+
+# Session 001 — <today>
+
+> First entry in the session-log chain. Installed by /setup-session-log.
+
+## Continuity check (vs previous session)
+N/A — chain starts here.
+
+## Done this session
+- <what this session actually accomplished, or "set up the session-log system">
+
+## Next session should do
+- <the starting agenda for next session>
+
+## Decisions on probation
+- <recent choices not yet validated>
+
+## Working context
+- <env/data state needed to resume: running processes, key files/paths>
+
+## Skip-the-rabbit-hole reminders
+- <issues already resolved that a future session might re-investigate>
+```
+
+### Step 4 — Pointer file
+Write `MEM/for_next_session.md` as a thin pointer (NOT carry-over content):
+
+```markdown
+---
+name: For next session — pointer to the session-log chain
+description: Stable entry point. Points to the current head of the append-only session-log chain.
+type: ephemeral
+lifetime: persistent-pointer
+---
+
+> **Read the chain head:** [`session_logs/session_001_<today>.md`](session_logs/session_001_<today>.md)
+
+In-flight context lives in the **session-log chain** under `session_logs/` (append-only, numbered, dated, prev/next-linked). At session end, APPEND a new log per `session-log-protocol.md` — do not overwrite this file. **Current chain head:** `session_001_<today>.md`
+```
+
+### Step 5 — MEMORY.md bootstrap line
+Ensure the FIRST line of `MEM/MEMORY.md` (above any heading) is:
+
+```markdown
+> See [for_next_session.md](for_next_session.md) — pointer to the **session-log chain** (`session_logs/`). Each session appends a numbered, dated, back-linked log (never overwritten); the chain head is auto-injected at session start.
+```
+
+Add it if missing; never duplicate.
+
+### Step 6 — Install the hook script
+Copy this skill's bundled `inject_session_log.sh` to `PROJECT/.claude/hooks/inject_session_log.sh` (mkdir -p `.claude/hooks` first) and `chmod +x` it. The bundled script is portable (resolves the memory dir at runtime, uses python3 not jq).
+
+### Step 7 — Register the SessionStart hook
+**Read** `PROJECT/.claude/settings.json` first (create `{}` if missing). **Merge** (preserve all existing keys, especially `mcpServers`/`permissions`) this into `hooks`:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "<PROJECT>/.claude/hooks/inject_session_log.sh", "timeout": 10, "statusMessage": "Loading session-log chain head..." } ] }
+    ]
+  }
+}
+```
+
+Use the absolute project path in `command`. If `.claude/settings.json` already has a SessionStart hook, add this one alongside (don't replace). Validate the merged file parses (`python3 -c "import json;json.load(open('.claude/settings.json'))"` — jq may be absent).
+
+### Step 8 — Write the maintenance protocol
+Write `MEM/session-log-protocol.md` with the append rules below, and (if the project has a `/sync-mem` extension at `.claude/sync-mem-project.md`) add a one-line pointer to it there. Protocol content:
+
+```markdown
+# Session-log chain protocol
+
+At the end of a session (e.g. /sync-mem, or before stepping away):
+1. Find the current head = highest-numbered `session_logs/session_NNN_*.md`.
+2. **Continuity check:** read the head's "Next session should do"; the new log opens with a section marking each item DONE / DEFERRED / DROPPED (with why).
+3. Create `session_{NNN+1}_<today>.md` (prev: = old head, next: null). Sections: Continuity check, Done this session, Next session should do, Decisions on probation, Working context, Skip-the-rabbit-hole. Record `session_id`/`transcript` in frontmatter.
+4. Back-link: set the previous head's `next:` to the new file.
+5. Refresh `for_next_session.md`'s pointer to the new head.
+NEVER overwrite an existing numbered log. Pass today's date + session_id in explicitly.
+```
+
+### Step 9 — Verify
+Pipe-test the installed hook and confirm valid JSON with content:
+`echo '{}' | PROJECT/.claude/hooks/inject_session_log.sh | python3 -m json.tool` — expect `hookSpecificOutput.additionalContext` containing the first log. On a fresh install this log is brand new, so the staleness check should stay silent (no `⚠` line); it only fires once the working tree moves ahead of the head's date.
+
+### Step 10 — Report
+Tell the user what was created. Note: the `SessionStart` hook only fires when a session *begins*, so it takes effect on the **next** session start (can't be tested in-turn). Point them at `/hooks` to confirm registration or disable it. Do **not** add a "read the session log" reminder to CLAUDE.md — the hook makes it deterministic.
+
+## Notes
+- Do not switch the hook to `jq` — many environments lack it; the bundled script uses `python3`.
+- Logs are loaded by the hook, not the auto-memory loader, so they don't bloat `MEMORY.md`.
+- For distribution to other people/machines, wrap this skill + the hook in a plugin (a plugin ships the hook so it activates on install; a skill must be invoked to wire it).
