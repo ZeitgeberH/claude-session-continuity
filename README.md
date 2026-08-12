@@ -1,7 +1,8 @@
 # agentSkills_mem
 
-Two Claude Code skills for giving a long-horizon, multi-session project working memory across
-sessions.
+A pair of Claude Code skills for giving a long-horizon, multi-session project working memory across
+sessions.For a short-lived project, or one already tracked in an external PM tool, it's overhead
+without much payoff.
 
 **Why use this.** `setup-session-log` gives an agent a time machine for its own project memory: a
 chain of session logs linked by `prev`/`next`, walkable backward on demand. Most sessions, an agent
@@ -10,8 +11,7 @@ automatically. But the chain is where you go when a fact needs checking: when wa
 true, why, and has anything changed since. `sync-mem` is what keeps a fact from getting stranded
 back there — it pulls what's durable out of a session's narrative and into memory *before* that
 session becomes just another stop on the timeline, so the next agent doesn't have to travel back to
-find it. For a short-lived project, or one already tracked in an external PM tool, it's overhead
-without much payoff.
+find it. 
 
 Without this pairing, an agent starting a new session has to reconstruct "where things stand" from
 git log and code alone — roughly 10x the tokens of reading one pre-digested entry, and some things
