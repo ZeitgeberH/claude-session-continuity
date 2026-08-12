@@ -1,27 +1,33 @@
 # agentSkills_mem
 
 Two Claude Code skills for giving a long-horizon, multi-session project working memory across
-sessions — extracted from a working project so other agents/projects can pull just these, without
-unrelated project-specific baggage.
+sessions.
+
+**Why use this.** Without it, an agent starting a new session has to reconstruct "where things
+stand" from git log and code alone — reading one pre-digested session-log entry costs roughly a
+tenth the tokens that reconstruction does, and some things never make it into git at all (why an
+approach was tried and dropped, what's still shaky, what to check before trusting a number). The
+chain is a convenience cache, not a source of truth — git and the code stay authoritative — but for
+a project where sessions are spread across days or weeks and judgment calls accumulate, that cache
+is the difference between re-deriving context every time and picking up cleanly. For a short-lived
+project, or one already tracked in an external PM tool, it's overhead without much payoff.
 
 ## `setup-session-log`
 
-Scaffolds an append-only, prev/next-linked chain of per-session summaries
+An append-only, prev/next-linked chain of per-session summaries
 (`session_logs/session_NNN_YYYY-MM-DD.md`), auto-injected into every new session via a
-`SessionStart` hook (`inject_session_log.sh`) — so an agent starts each session knowing what the
-previous one did and planned next, deterministically, without relying on a "read the log first"
-reminder.
+`SessionStart` hook — so an agent starts already knowing what happened and what's next, without a
+"read the log first" reminder.
 
-Includes a built-in staleness check: if the working tree has files modified after the chain head's
-own date (per `git status`), the hook warns instead of silently trusting a log that might not
-reflect recent work. Portable — tries GNU `stat` first, falls back to BSD/macOS `stat -f`.
+Includes a staleness check: warns if the working tree has changed since the chain head's own date,
+instead of silently trusting a log that might be out of date. Portable — GNU `stat` first, BSD/
+macOS `stat -f` fallback.
 
 ## `sync-mem`
 
-Persists a session's durable findings — corrections, decisions, project state — into general
-memory plus the session-log chain, at natural checkpoints (before stepping away, or on request).
-Covers both generic memory and any project-specific extension declared in
-`.claude/sync-mem-project.md`.
+Persists a session's durable findings — corrections, decisions, project state — into memory and
+the session-log chain, at natural checkpoints. Covers general memory plus any project-specific
+extension declared in `.claude/sync-mem-project.md`.
 
 ## Installing in another project
 
