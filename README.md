@@ -3,28 +3,20 @@
 Two Claude Code skills for giving a long-horizon, multi-session project working memory across
 sessions.
 
-**Why use this.** Together the two skills split a project's memory along two axes, not one:
+**Why use this.** `setup-session-log` gives an agent a time machine for its own project memory: a
+chain of session logs linked by `prev`/`next`, walkable backward on demand. Most sessions, an agent
+doesn't travel at all — it just lives in the present, the current head, auto-injected
+automatically. But the chain is where you go when a fact needs checking: when was this believed
+true, why, and has anything changed since. `sync-mem` is what keeps a fact from getting stranded
+back there — it pulls what's durable out of a session's narrative and into memory *before* that
+session becomes just another stop on the timeline, so the next agent doesn't have to travel back to
+find it.
 
-- **Access — short-term vs. long-term.** The session-log chain is long-term in *storage* (nothing
-  in it is ever deleted or overwritten) but short-term in *use*: only the current head is
-  auto-injected and actively read each session. The rest sits archived, walked via `prev`/`next`
-  links only when you deliberately need it — chasing the provenance of a past decision, not
-  routine reading.
-- **Content — episodic vs. semantic.** The chain is episodic: dated, narrative, "session N did X,
-  decided Y, planned Z next." `sync-mem` writes the complementary layer into Claude Code's
-  built-in memory system, which is semantic: durable facts and decisions, stripped of when or why
-  they were learned.
-
-An agent needs both, and each fixes a failure mode the other has on its own. `sync-mem` stamps
-every memory entry with the session it came from, so a fact can be traced back to when and why it
-was believed true instead of being trusted forever, unverified. And because only the chain's
-current head is actively read, anything worth keeping has to be pulled out of a session's
-narrative into memory before that session log falls out of view — that pull is `sync-mem`'s job
-too; skip it and a fact stays buried in an old entry nobody will reread. Without this pairing, an
-agent starting a new session has to reconstruct "where things stand" from git log and code alone —
-roughly 10x the tokens of reading one pre-digested entry, and some things (why an approach was
-tried and dropped, what's still shaky) never make it into git at all. For a short-lived project, or
-one already tracked in an external PM tool, it's overhead without much payoff.
+Without this pairing, an agent starting a new session has to reconstruct "where things stand" from
+git log and code alone — roughly 10x the tokens of reading one pre-digested entry, and some things
+(why an approach was tried and dropped, what's still shaky) never make it into git at all. For a
+short-lived project, or one already tracked in an external PM tool, it's overhead without much
+payoff.
 
 ## `setup-session-log`
 
