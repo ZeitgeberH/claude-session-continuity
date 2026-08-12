@@ -3,14 +3,24 @@
 Two Claude Code skills for giving a long-horizon, multi-session project working memory across
 sessions.
 
-**Why use this.** Without it, an agent starting a new session has to reconstruct "where things
-stand" from git log and code alone — reading one pre-digested session-log entry costs roughly a
-tenth the tokens that reconstruction does, and some things never make it into git at all (why an
-approach was tried and dropped, what's still shaky, what to check before trusting a number). The
-chain is a convenience cache, not a source of truth — git and the code stay authoritative — but for
-a project where sessions are spread across days or weeks and judgment calls accumulate, that cache
-is the difference between re-deriving context every time and picking up cleanly. For a short-lived
-project, or one already tracked in an external PM tool, it's overhead without much payoff.
+**Why use this.** Together the two skills split a project's memory along two axes, not one:
+
+- **Access — short-term vs. long-term.** The session-log chain is long-term in *storage* (nothing
+  in it is ever deleted or overwritten) but short-term in *use*: only the current head is
+  auto-injected and actively read each session. The rest sits archived, walked via `prev`/`next`
+  links only when you deliberately need it — chasing the provenance of a past decision, not
+  routine reading.
+- **Content — episodic vs. semantic.** The chain is episodic: dated, narrative, "session N did X,
+  decided Y, planned Z next." `sync-mem` writes the complementary layer into Claude Code's
+  built-in memory system, which is semantic: durable facts and decisions, stripped of when or why
+  they were learned.
+
+An agent needs both. A fact without its provenance can quietly go stale; a narrative with nowhere
+to distill facts out of it just grows forever, unread. Without this pairing, an agent starting a
+new session has to reconstruct "where things stand" from git log and code alone — roughly 10x the
+tokens of reading one pre-digested entry, and some things (why an approach was tried and dropped,
+what's still shaky) never make it into git at all. For a short-lived project, or one already
+tracked in an external PM tool, it's overhead without much payoff.
 
 ## `setup-session-log`
 
