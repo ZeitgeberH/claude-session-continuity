@@ -10,13 +10,12 @@ automatically. But the chain is where you go when a fact needs checking: when wa
 true, why, and has anything changed since. `sync-mem` is what keeps a fact from getting stranded
 back there — it pulls what's durable out of a session's narrative and into memory *before* that
 session becomes just another stop on the timeline, so the next agent doesn't have to travel back to
-find it.
+find it. For a short-lived project, or one already tracked in an external PM tool, it's overhead
+without much payoff.
 
 Without this pairing, an agent starting a new session has to reconstruct "where things stand" from
 git log and code alone — roughly 10x the tokens of reading one pre-digested entry, and some things
-(why an approach was tried and dropped, what's still shaky) never make it into git at all. For a
-short-lived project, or one already tracked in an external PM tool, it's overhead without much
-payoff.
+(why an approach was tried and dropped, what's still shaky) never make it into git at all.
 
 ## `setup-session-log`
 
