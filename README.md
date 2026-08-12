@@ -15,12 +15,16 @@ sessions.
   built-in memory system, which is semantic: durable facts and decisions, stripped of when or why
   they were learned.
 
-An agent needs both. A fact without its provenance can quietly go stale; a narrative with nowhere
-to distill facts out of it just grows forever, unread. Without this pairing, an agent starting a
-new session has to reconstruct "where things stand" from git log and code alone — roughly 10x the
-tokens of reading one pre-digested entry, and some things (why an approach was tried and dropped,
-what's still shaky) never make it into git at all. For a short-lived project, or one already
-tracked in an external PM tool, it's overhead without much payoff.
+An agent needs both, and each fixes a failure mode the other has on its own. `sync-mem` stamps
+every memory entry with the session it came from, so a fact can be traced back to when and why it
+was believed true instead of being trusted forever, unverified. And because only the chain's
+current head is actively read, anything worth keeping has to be pulled out of a session's
+narrative into memory before that session log falls out of view — that pull is `sync-mem`'s job
+too; skip it and a fact stays buried in an old entry nobody will reread. Without this pairing, an
+agent starting a new session has to reconstruct "where things stand" from git log and code alone —
+roughly 10x the tokens of reading one pre-digested entry, and some things (why an approach was
+tried and dropped, what's still shaky) never make it into git at all. For a short-lived project, or
+one already tracked in an external PM tool, it's overhead without much payoff.
 
 ## `setup-session-log`
 
