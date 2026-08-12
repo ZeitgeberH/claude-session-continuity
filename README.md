@@ -1,5 +1,12 @@
 # agentSkills_mem
 
+This design works for the same reason biological memory is shaped this way: no system with bounded
+attention — human or agent — can keep everything active at once, so it needs a small "working"
+layer plus a consolidation process that decides what's worth carrying forward, stamped with enough
+provenance to know when to trust it and when to double-check. Neither the brain nor this pair of
+skills got there by aesthetic choice — it's what bounded-memory systems converge on when the
+problem is "remember what matters, forget cheaply, and keep receipts."
+
 A pair of Claude Code skills for giving a long-horizon, multi-session project working memory across
 sessions. For a short-lived project, or one already tracked in an external PM tool, it's overhead
 without much payoff.
