@@ -1,7 +1,7 @@
 # agentSkills_mem
 
 A pair of Claude Code skills for giving a long-horizon, multi-session project working memory across
-sessions.For a short-lived project, or one already tracked in an external PM tool, it's overhead
+sessions. For a short-lived project, or one already tracked in an external PM tool, it's overhead
 without much payoff.
 
 **Why use this.** `setup-session-log` gives an agent a time machine for its own project memory: a
