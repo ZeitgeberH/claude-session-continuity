@@ -9,10 +9,24 @@ description: Scaffold the append-only session-log continuity system in a project
 
 Most memory systems keep **current state** (recall-optimized, deduplicated) and **raw transcripts** (lossless, verbose). What's missing is the curated middle layer: a compact per-session summary of *what was done* and *what's planned next*, in an **append-only linked chain** so a future session can reconstruct the project's evolution cheaply and audit whether each session did what the previous one asked. The old `for_next_session.md`-gets-overwritten pattern destroys that thread; this chain preserves it.
 
-Three components get installed:
+Four components get installed:
 1. **The chain** — `<memory>/session_logs/session_NNN_YYYY-MM-DD.md`, one per session, linked by `prev:`/`next:` frontmatter, each carrying its `session_id`/`transcript` pointer (an index INTO the raw transcript).
-2. **The auto-inject hook** — a `SessionStart` hook (`inject_session_log.sh`) that prints the chain head into every new session's context. Deterministic — no reliance on the agent following a pointer, so no "read the log first" reminder is needed in CLAUDE.md. It also carries a built-in staleness check: if any file in the working tree (per `git status`) was modified after the chain head's own date, it prepends a `⚠ SESSION-LOG STALENESS WARNING` naming the newest offender — the chain can go stale silently otherwise (work happens without a session ever being logged for it), and nothing else catches that.
-3. **The maintenance protocol** — written into the project so `/sync-mem` (or session end) APPENDS a new log + continuity check rather than overwriting.
+2. **The auto-inject hook** — a `SessionStart` hook (`inject_session_log.sh`) that prints the chain head into every new session's context. Deterministic — no reliance on the agent following a pointer, so no "read the log first" reminder is needed in CLAUDE.md. It also carries a built-in staleness check (see below).
+3. **The transcript mirror** — a `SessionEnd` + `Stop` hook (`save_transcripts.sh`) that copies the raw `.jsonl` transcripts into `<project>/.claude-transcripts/`. **Without it the chain advertises a drill-down it cannot honour**: every log's `transcript:` field points into `~/.claude/projects/…`, which is *not* durable. In a real devcontainer project a rebuild destroyed ~4 months of transcripts — all 39 logs survived (they live in the project) but every `transcript:` pointer in them died. The chain is the curated layer; this makes the raw layer as durable as the project.
+4. **The maintenance protocol** — written into the project so `/sync-mem` (or session end) APPENDS a new log + continuity check rather than overwriting.
+
+> **★ The staleness check has two modes and a third state that announces itself.** If any work file
+> was modified after the chain head's own date, the hook prepends a `⚠ SESSION-LOG STALENESS WARNING`
+> naming the newest offender — the chain goes stale silently otherwise (work happens without a session
+> ever being logged for it) and nothing else catches that.
+> - **git mode** — files `git status` already flags (tracked-modified + untracked). Deliberately not
+>   `git log -1`: a session can leave real uncommitted work behind and commit dates miss exactly that.
+> - **mtime mode** — for projects that are **not git repositories**. ⚠ This case is not hypothetical
+>   and the failure is silent: without it the check runs, finds nothing, and reports clean *forever* —
+>   a warning system that can never fire, which is worse than none because it reads as coverage.
+>   Observed in a devcontainer whose workspace was not a repo: a 13-day unlogged gap went unreported.
+> - **unavailable** — if neither works, the hook **says so** in the injected context. An inert check
+>   must never be mistaken for a clean bill of health.
 
 ## When to use
 
@@ -137,23 +151,42 @@ Ensure the FIRST line of `MEM/MEMORY.md` (above any heading) is:
 
 Add it if missing; never duplicate.
 
-### Step 6 — Install the hook script
-Copy this skill's bundled `inject_session_log.sh` to `PROJECT/.claude/hooks/inject_session_log.sh` (mkdir -p `.claude/hooks` first) and `chmod +x` it. The bundled script is portable (resolves the memory dir at runtime, uses python3 not jq).
+### Step 6 — Install the hook scripts
+Copy **both** bundled scripts to `PROJECT/.claude/hooks/` (mkdir -p first) and `chmod +x` them:
+- `inject_session_log.sh` — the SessionStart injector + staleness check.
+- `save_transcripts.sh` — the transcript mirror.
 
-### Step 7 — Register the SessionStart hook
-**Read** `PROJECT/.claude/settings.json` first (create `{}` if missing). **Merge** (preserve all existing keys, especially `mcpServers`/`permissions`) this into `hooks`:
+Both are portable: they resolve the project and memory dirs at runtime and use python3, not jq.
+
+Then **gitignore the mirror** — add `.claude-transcripts/` to `PROJECT/.gitignore` (create it if absent). Transcripts are large (tens of MB per long session), grow without bound, and contain the full verbatim conversation. Their job is to survive the harness directory, not to be committed. ⚠ Tell the user the directory needs periodic pruning; nothing rotates it.
+
+### Step 7 — Register the hooks
+**Read** `PROJECT/.claude/settings.json` first (create `{}` if missing). **Merge** (preserve all existing keys, especially `mcpServers`/`permissions`) these three registrations into `hooks`:
 
 ```json
 {
   "hooks": {
     "SessionStart": [
       { "hooks": [ { "type": "command", "command": "<PROJECT>/.claude/hooks/inject_session_log.sh", "timeout": 10, "statusMessage": "Loading session-log chain head..." } ] }
+    ],
+    "SessionEnd": [
+      { "hooks": [ { "type": "command", "command": "<PROJECT>/.claude/hooks/save_transcripts.sh", "timeout": 15, "statusMessage": "Mirroring transcripts..." } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "<PROJECT>/.claude/hooks/save_transcripts.sh", "timeout": 15, "statusMessage": "Mirroring transcripts..." } ] }
     ]
   }
 }
 ```
 
-Use the absolute project path in `command`. If `.claude/settings.json` already has a SessionStart hook, add this one alongside (don't replace). Validate the merged file parses (`python3 -c "import json;json.load(open('.claude/settings.json'))"` — jq may be absent).
+Use the absolute project path in `command`. If an event already has a hook, **add alongside — don't replace**. Validate the merged file parses (`python3 -c "import json;json.load(open('.claude/settings.json'))"` — jq may be absent).
+
+> **Why `Stop` as well as `SessionEnd`.** `SessionEnd` captures a cleanly-finished session, but the
+> failure this protects against — an environment destroyed out from under you — is exactly the case
+> where `SessionEnd` never fires. `Stop` runs after each assistant turn, so the mirror stays current
+> to within one turn. It is cheap: the script copies only when the source is strictly newer, so a
+> normal turn does a `stat` and nothing else. If per-turn latency is ever a concern, drop to
+> `SessionEnd` only and accept losing the final session.
 
 ### Step 8 — Write the maintenance protocol
 Write `MEM/session-log-protocol.md` with the append rules below, and (if the project has a `/sync-mem` extension at `.claude/sync-mem-project.md`) add a one-line pointer to it there. Protocol content:
