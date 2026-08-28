@@ -41,7 +41,7 @@ Persists a session's durable findings — corrections, decisions, project state 
 the session-log chain, at natural checkpoints. Covers general memory plus any project-specific
 extension declared in `.claude/sync-mem-project.md`.
 
-## Instruction for installation
+## Installation  Instruction 
 
 Clone this repo once, then pick the mode that matches your situation:
 
@@ -49,14 +49,13 @@ Clone this repo once, then pick the mode that matches your situation:
 git clone https://github.com/ZeitgeberH/agentSkills_mem
 ```
 
-### New project — starting from nothing
+### New project
+
+#### Step 1: Initialization a project folder. 
 
 ```sh
 ./agentSkills_mem/install.sh --create ~/new-project
 ```
-
-You give it a path that does not exist yet. You get back a git repository with everything installed
-and committed.
 
 **It asks you two questions.** Press Enter twice to take the defaults — memory in the project
 folder, transcripts kept forever. Both are explained under
@@ -137,6 +136,11 @@ the installer prints on exit.
 session log being written for it. In a git repo it checks with `git status` — fast and exact.
 Without one it falls back to walking the file tree, which is slower and needs tuning on projects
 with big data folders. A repo also lets each log's "Done this session" sit next to real commits.
+
+#### Step 2: Initialization session logs.
+
+Start a claude code session, run /setup-session-log
+
 
 ### Existing project — adding to work you already have
 
