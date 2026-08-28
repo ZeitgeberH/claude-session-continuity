@@ -67,13 +67,17 @@ invisible to every clone. It reports that state; it never commits or pushes on y
 
 > ## ⚠️ Read this first
 >
-> **The installer moves your project's memory directory and leaves a symlink behind in `~/.claude/`.**
-> It is on by default, it is the only thing written outside the project you name, and it depends on a
-> path Claude Code does not document as stable.
+> The installer turns on **[two things by default](#two-things-it-does-by-default)** that you should
+> agree to knowingly:
 >
-> It is worth it — it is what keeps memory alive across a container rebuild — but understand it
-> before running: [what it changes, why, and how to undo it](#the-memory-relocation).
-> Skip it entirely with **`--no-invert-memory`**.
+> 1. **It moves your project's memory directory** into the project and leaves a symlink behind in
+>    `~/.claude/` — relying on a path Claude Code does not document as stable. Opt out with
+>    `--no-invert-memory`.
+> 2. **It copies full verbatim transcripts** of every session into `.claude-transcripts/` in your
+>    project, and never deletes them unless you ask. Gitignored, but not invisible.
+>
+> Both exist because anything under `~/.claude/` is destroyed by a container rebuild. Both are worth
+> it for a long-lived project — but read what they do before running, especially on a work machine.
 
 Clone this repo once, then pick the mode that matches your situation:
 
@@ -259,30 +263,32 @@ Neither scaffolds the chain itself: the first log needs today's date, the sessio
 summary of the session, which is agent work. `/setup-session-log` finishes that, and is idempotent —
 it picks up from whatever the installer left.
 
-#### The memory relocation
+### Two things it does by default
 
-> By default the installer does this, and it is the *only* thing it touches outside `TARGET`:
->
-> ```
-> ~/.claude/projects/<sanitized-target>/memory   ->   TARGET/.claude/memory/store/
-> ```
->
-> The directory is moved into the project and replaced with a symlink pointing at it. Any memory
-> already there is carried across first; the original is kept as `.bak` until the new location is
-> verified by reading `MEMORY.md` back through the link, then removed. A failed verification rolls
-> back automatically.
->
-> **Why this is the default rather than a flag.** That path holds *this project's own memory* and
-> nothing else — so the move relocates data that already belongs to the project you named, it does
-> not reach into unrelated state. And the two mistakes are not symmetric: skipping it when you
-> should not means memory dies with the next container rebuild (`~/.claude/` is the ephemeral half,
-> the project is the persistent bind-mount), or, on a host, a later migration that moves three files
-> into `store/` and rewrites every relative link `session_logs/` → `../session_logs/`. Doing it when
-> you did not need to leaves a symlink you can undo in one command.
->
-> Skip it with **`--no-invert-memory`**.
->
-> **The risk, stated plainly.** `~/.claude/projects/<sanitized-cwd>/memory` is Claude Code's own
+Both are on unless you turn them off, and both write outside the obvious place. They exist for the
+same reason: **anything Claude Code keeps under `~/.claude/` is on borrowed time.** In a container
+that directory is the ephemeral half while your project is the persistent bind-mount, so a rebuild
+takes it; on a host, a cleanup or a machine change does. Each default moves one kind of history into
+the project, where it lives as long as the project does.
+
+#### 1. The memory relocation
+
+```
+~/.claude/projects/<sanitized-target>/memory   ->   TARGET/.claude/memory/store/
+```
+
+The directory is moved into the project and replaced with a symlink pointing at it. Any memory
+already there is carried across first; the original is kept as `.bak` until the new location is
+verified by reading `MEMORY.md` back through the link, then removed. A failed verification rolls back
+automatically. **Opt out with `--no-invert-memory`.**
+
+**Why this direction.** The link runs harness → project, never the reverse. A `.claude-memory`
+symlink in the project pointing out at `~/.claude/...` would embed an absolute host path in the
+project tree, which breaks in a devcontainer, a remote workspace, a CI checkout, or on another
+machine. Inverted, the project holds real files that resolve everywhere and the only symlink sits
+under `~/.claude/`, where Claude Code — running on the host — resolves it fine.
+
+> **⚠️ The risk, stated plainly.** `~/.claude/projects/<sanitized-cwd>/memory` is Claude Code's own
 > internal layout. It is not a documented, promised-stable interface, and this project has no special
 > standing to rely on it. If that layout changes in a future release, the symlink stops corresponding
 > to anything the harness looks at — and the failure is **silent**: memory simply stops being read or
@@ -290,28 +296,55 @@ it picks up from whatever the installer left.
 >
 > That is a real bet, made deliberately, because the alternative — memory living in the disposable
 > half of a container — fails more often and more expensively. But it is a bet, and you should make
-> it knowingly rather than inherit it from a default. If you would rather not, `--no-invert-memory`
-> costs you nothing except durability across rebuilds.
->
-> **Two related caveats.** The harness path is derived from the target path with `/` replaced by `-`,
-> so opening the project by a *different* route — another mount point, a symlinked path — makes
-> Claude Code compute a different directory that will not see this memory. And `store/` is
-> gitignored, so anything that deletes ignored files (`git clean -xdf`, a fresh clone) removes the
-> link's target; re-running `install.sh` detects that and repairs it.
->
-> **To undo it**, move the real files back and drop the link:
->
-> ```sh
-> auto=~/.claude/projects/"$(pwd | tr / -)"/memory
-> rm "$auto"                                  # remove the symlink, not its target
-> mkdir -p "$(dirname "$auto")"
-> mv .claude/memory/store "$auto"             # put the real files back
-> ```
->
-> The session-log chain in `.claude/memory/session_logs/` is unaffected — it never lived in the
-> memory directory, by design.
+> it knowingly rather than inherit it from a default.
 
-#### From here on
+**Two related caveats.** The harness path is derived from the target path with `/` replaced by `-`,
+so opening the project by a *different* route — another mount point, a symlinked path — makes Claude
+Code compute a different directory that will not see this memory. And `store/` is gitignored, so
+anything that deletes ignored files (`git clean -xdf`, a fresh clone) removes the link's target;
+re-running `install.sh` detects that and repairs it.
+
+**To undo it**, move the real files back and drop the link:
+
+```sh
+auto=~/.claude/projects/"$(pwd | tr / -)"/memory
+rm "$auto"                                  # remove the symlink, not its target
+mkdir -p "$(dirname "$auto")"
+mv .claude/memory/store "$auto"             # put the real files back
+```
+
+The session-log chain in `.claude/memory/session_logs/` is unaffected — it never lived in the memory
+directory, by design.
+
+#### 2. The transcript mirror
+
+```
+~/.claude/projects/<sanitized-target>/*.jsonl   ->   TARGET/.claude-transcripts/
+```
+
+A `SessionEnd` + `Stop` hook copies the raw session transcripts into the project. This is a **copy**,
+not a move — the originals are left alone, since one of them is the session currently being written.
+Without it, every session log's `transcript:` field points into a directory that is not durable: in a
+real devcontainer, a rebuild destroyed about four months of transcripts, and all 39 logs survived
+while every pointer in them died.
+
+> **⚠️ These are the full verbatim conversations**, including anything you pasted into them. They
+> land in `.claude-transcripts/` inside your project. The installer gitignores that directory, which
+> keeps it out of the repo — but *not* out of a zip, a backup, a container image built from the
+> workspace, or a directory someone browses. On a work machine or a shared repo, decide whether you
+> want that before installing, not after.
+
+**Retention is off by default** — nothing deletes them, and the `Stop` hook refreshes after every
+assistant turn, so the directory only grows. Pass **`--retention-days N`** at install time to wire a
+`SessionEnd` prune hook that deletes mirrored transcripts older than N days while always keeping the
+3 most recent; the knobs then live in `.claude/hooks/transcript-retention.conf`. Decline and no
+deletion code is installed at all.
+
+**To turn it off**, remove the two `save_transcripts.sh` registrations from `.claude/settings.json`
+(`SessionEnd` and `Stop`) and delete `.claude-transcripts/`. Nothing else depends on it; you lose only
+the ability to drill from a session log into its raw transcript.
+
+### From here on
 
 Work normally. Run **`/sync-mem`** at checkpoints — when something is worth keeping, or before you
 step away — and it appends a log for the session and saves what is durable to memory. From your
@@ -326,20 +359,6 @@ by hand — though you can, and it is idempotent.
 > running is not invocable in it — invoking it fails with `Unknown skill`. That is this rule showing
 > up, not a broken install: start a session, or restart the open one, and it works. `install.sh`
 > avoids this entirely by finishing before any session starts.
-
-### Running in a container? The memory-dir inversion is not optional
-
-`/setup-session-log` points the harness memory dir at the project
-(`~/.claude/projects/<cwd>/memory` becomes a symlink into `PROJECT/.claude/memory/store/`) rather
-than the reverse. On a plain host that's a portability nicety. In a container it's the whole ball
-game: `~/.claude/` sits on the **ephemeral** side while the project is the bind-mounted
-**persistent workspace**, so an un-inverted memory dir is destroyed by the next rebuild. Inverted,
-the real files live in the workspace and only a symlink is disposable.
-
-This is the same reasoning behind the transcript mirror, which copies the raw `.jsonl` files into
-the workspace for the identical reason — a real rebuild once destroyed ~4 months of them. Together
-they're what makes a containerized project's history durable. `SKILL.md` Step 1 has the mechanics,
-including why the link must never run the other way.
 
 ## License
 
