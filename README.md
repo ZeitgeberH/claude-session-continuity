@@ -43,6 +43,23 @@ extension declared in `.claude/sync-mem-project.md`.
 
 ## Installing in another project
 
+### One command: `install.sh`
+
+```sh
+git clone https://github.com/ZeitgeberH/agentSkills_mem
+./agentSkills_mem/install.sh ~/path/to/your-project        # add --invert-memory in a container
+```
+
+Copies both skills, symlinks the hooks, merges `settings.json` (preserving existing keys), and
+seeds `.gitignore`. Re-runnable, and `--dry-run` shows the plan without touching anything. It
+deliberately stops short of scaffolding the chain — the first log needs today's date, the session
+UUID, and a real summary, which is agent work — so finish with `/setup-session-log`.
+
+This works on an **existing** project, which is the common case: the payoff here is long-horizon
+work, and long-horizon work usually already has a repo. (That's also why this repo isn't a GitHub
+template — a template only serves brand-new projects, gives the clone this repo's README and
+identity, and leaves no path for upstream fixes to arrive.)
+
 ### Recommended order — restart between copy and setup
 
 Skills and hooks are registered when a session **starts**, not when their files appear on disk.

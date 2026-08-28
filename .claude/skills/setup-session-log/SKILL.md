@@ -226,19 +226,35 @@ not out of a zip, a backup, or an image built from the workspace.
 {
   "hooks": {
     "SessionStart": [
-      { "hooks": [ { "type": "command", "command": "<PROJECT>/.claude/hooks/inject_session_log.sh", "timeout": 10, "statusMessage": "Loading session-log chain head..." } ] }
+      { "hooks": [ { "type": "command", "command": "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/inject_session_log.sh", "timeout": 10, "statusMessage": "Loading session-log chain head..." } ] }
     ],
     "SessionEnd": [
-      { "hooks": [ { "type": "command", "command": "<PROJECT>/.claude/hooks/save_transcripts.sh", "timeout": 15, "statusMessage": "Mirroring transcripts..." } ] }
+      { "hooks": [ { "type": "command", "command": "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/save_transcripts.sh", "timeout": 15, "statusMessage": "Mirroring transcripts..." } ] }
     ],
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "<PROJECT>/.claude/hooks/save_transcripts.sh", "timeout": 15, "statusMessage": "Mirroring transcripts..." } ] }
+      { "hooks": [ { "type": "command", "command": "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/save_transcripts.sh", "timeout": 15, "statusMessage": "Mirroring transcripts..." } ] }
     ]
   }
 }
 ```
 
-Use the absolute project path in `command`. If an event already has a hook, **add alongside — don't replace**. Validate the merged file parses (`python3 -c "import json;json.load(open('.claude/settings.json'))"` — jq may be absent).
+**Use `${CLAUDE_PROJECT_DIR:-.}`, never a hardcoded absolute path.** If an event already has a hook, **add alongside — don't replace**.
+
+> **★ An absolute path in `settings.json` is a portability bug, and `settings.json` is committed.**
+> Hardcoding `/home/you/proj/.claude/hooks/…` bakes one machine's layout into a tracked file: clone
+> the project anywhere else — another machine, a CI checkout, a container whose bind-mount lands at
+> `/workspace` instead — and every hook silently fails to fire. Silently is the operative word;
+> a missing hook produces no error, just a session that quietly starts without its chain head. This
+> is the same class of mistake as the outward `.claude-memory` symlink in Step 1, and it is
+> especially perverse here, because the container case is exactly the one this system exists to
+> serve.
+>
+> `CLAUDE_PROJECT_DIR` is exported into the hook environment — the bundled scripts already rely on
+> it (`proj="${CLAUDE_PROJECT_DIR:-$PWD}"`). The `:-.` fallback costs nothing and degrades to a
+> project-relative path if the variable is ever absent.
+>
+> Hook commands are run through a shell, so the expansion happens there, not in the JSON. Confirm on
+> the next session start rather than assuming: if the chain head is injected, it expanded. Validate the merged file parses (`python3 -c "import json;json.load(open('.claude/settings.json'))"` — jq may be absent).
 
 > **Why `Stop` as well as `SessionEnd`.** `SessionEnd` captures a cleanly-finished session, but the
 > failure this protects against — an environment destroyed out from under you — is exactly the case
