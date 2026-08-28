@@ -55,9 +55,9 @@ git clone https://github.com/ZeitgeberH/agentSkills_mem
 ./agentSkills_mem/install.sh --create ~/new-project
 ```
 
-**That one command is the whole setup.** After it, you just use Claude Code normally — your first
-session notices the chain is missing, creates it, and commits it, without you asking. See
-[your first session](#your-first-session-nothing-to-do).
+**That is the whole setup — you are ready to work.** Start Claude Code in the project and use it as
+you normally would; your first session quietly creates and commits the session-log chain in the
+background before getting on with what you actually came to do.
 
 **It asks you two questions.** Press Enter twice to take the defaults — memory in the project
 folder, transcripts kept forever. Both are explained under
@@ -144,8 +144,8 @@ with big data folders. A repo also lets each log's "Done this session" sit next 
 ./agentSkills_mem/install.sh ~/existing-project
 ```
 
-That is the whole setup here too. Then use Claude Code normally — see
-[your first session](#your-first-session-nothing-to-do).
+That is the whole setup here too — you are ready to work. Your first session creates and commits the
+session-log chain in the background.
 
 The directory must already exist. It does **not** need a `.claude/` directory — that gets created.
 `settings.json` is merged, not overwritten: existing keys (`permissions`, `mcpServers`, other hooks)
@@ -230,30 +230,21 @@ it picks up from whatever the installer left.
 > `/` replaced by `-`. If you later open the project by a *different* path — another mount point, a
 > symlinked route — Claude Code computes a different directory and will not see this memory.
 
-#### Your first session (nothing to do)
+#### From here on
 
-```sh
-cd ~/your-project && claude
-```
+Work normally. Run **`/sync-mem`** at checkpoints — when something is worth keeping, or before you
+step away — and it appends a log for the session and saves what is durable to memory. From your
+second session onward, the previous session's summary and planned next steps are loaded before you
+type anything.
 
-Start Claude Code and work as you normally would. The `SessionStart` hook notices the chain does not
-exist yet and tells Claude to create it, so Claude runs `/setup-session-log`, writes
-`session_logs/session_001_<today>.md`, and commits it — then carries on with whatever you actually
-came to do. You can run `/setup-session-log` yourself if you would rather, but you do not need to
-remember it.
+You never need to restart a session for any of this, and you never need to run `/setup-session-log`
+by hand — though you can, and it is idempotent.
 
-Nothing else is required. Don't restart: this session wrote the chain, so it already knows what is in
-it. From your *next* session onward the previous session's summary is loaded at startup before you
-type anything, and `/sync-mem` appends a new log at each checkpoint.
-
-**One thing to know if you install by hand** rather than with `install.sh`: skills and hooks are
-registered when a session **starts**, not when their files appear on disk. A skill copied into a
-session that is already running is not invocable in it — invoking it fails with `Unknown skill`. That
-is this rule showing up, not a broken install; start a session (or restart the open one) and it
-works.
-
-If you genuinely must set up inside one session, read each `SKILL.md` and follow its procedure by
-hand, and treat the next session start as the real acceptance test.
+> **Installing by hand instead of with `install.sh`?** Skills and hooks are registered when a session
+> **starts**, not when their files appear on disk, so a skill copied into a session that is already
+> running is not invocable in it — invoking it fails with `Unknown skill`. That is this rule showing
+> up, not a broken install: start a session, or restart the open one, and it works. `install.sh`
+> avoids this entirely by finishing before any session starts.
 
 ### Running in a container? The memory-dir inversion is not optional
 

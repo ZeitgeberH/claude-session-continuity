@@ -300,16 +300,13 @@ fi
 
 cat <<EOF
 
-Done — that was the setup. From here just use Claude Code as usual:
+Done — that was the setup. You are ready to work:
 
     cd $TARGET && claude
 
-Your first session will notice the session-log chain is missing, create it and
-commit it on its own, then get on with whatever you started it for. Nothing to
-remember, and no restart.
+Use Claude Code as usual. Your first session creates and commits the session-log
+chain in the background; run /sync-mem at checkpoints to save what it learned.
 
-(If you ran this from inside a session already open on this project, restart that
-one — skills and hooks are registered when a session starts.)
-
-Run /sync-mem at checkpoints to append a log for each session.
+(Ran this from inside a session already open on this project? Restart that one —
+skills register at session start.)
 EOF
