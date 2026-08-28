@@ -13,6 +13,13 @@
 #   ./install.sh --dry-run ~/proj         show what would change, touch nothing
 #   ./install.sh --create ~/new-proj      scaffold the project first, then install
 #   ./install.sh --no-invert-memory ~/proj
+#   ./install.sh --retention-days 30 ~/proj   rotate mirrored transcripts
+#   ./install.sh -y ~/proj                    take every default, ask nothing
+#
+# On a terminal it ASKS about the two choices that are genuinely yours: where the
+# project's memory should live, and whether to delete old transcripts. Piped or
+# redirected (CI, scripts) it asks nothing and takes the defaults. Any flag you
+# pass settles that question and suppresses its prompt.
 #
 # TARGET must already exist unless --create is given. It does NOT need a .claude/
 # directory — that gets created. --create makes the directory, runs `git init`, and
@@ -32,13 +39,19 @@
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DRY=0; INVERT=1; CREATE=0; TARGET=""
+DRY=0; INVERT=1; CREATE=0; TARGET=""; ASSUME_YES=0
+INVERT_SET=0; RETENTION_DAYS=0; RETENTION_SET=0   # 0 days = keep forever (default)
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run)          DRY=1 ;;
     --create)           CREATE=1 ;;
-    --no-invert-memory) INVERT=0 ;;
-    --invert-memory)    INVERT=1 ;;   # now the default; accepted for compatibility
+    -y|--yes)           ASSUME_YES=1 ;;
+    --no-invert-memory) INVERT=0; INVERT_SET=1 ;;
+    --invert-memory)    INVERT=1; INVERT_SET=1 ;;
+    --retention-days)   shift; RETENTION_DAYS="${1:-0}"; RETENTION_SET=1
+                        case "$RETENTION_DAYS" in ''|*[!0-9]*)
+                          echo "--retention-days needs a whole number (0 = keep forever)" >&2; exit 2 ;;
+                        esac ;;
     -h|--help)       # print the whole header block, however long it grows
                         sed -n '2,${/^[^#]/q;p;}' "$0" | sed 's/^# \?//'; exit 0 ;;
     -*)              echo "unknown flag: $1" >&2; exit 2 ;;
@@ -78,6 +91,52 @@ command -v python3 >/dev/null || { echo "python3 required (settings.json merge)"
 
 echo "Installing into $TARGET"; [ "$DRY" = 1 ] && echo "(dry run — nothing will be written)"
 
+# --- ask, but only when there is a human to ask ------------------------------
+# A prompt that blocks a CI run is worse than a default, so: TTY only, never with
+# -y, and never for a question a flag already answered.
+if [ -t 0 ] && [ "$ASSUME_YES" != 1 ]; then
+  if [ "$INVERT_SET" != 1 ]; then
+    cat <<'ASK'
+
+  Where should this project's memory live?
+
+  Between sessions Claude keeps notes about a project — decisions, context, what
+  it learned. By default that store sits in Claude's own home folder (~/.claude),
+  away from your project: it does not travel when you move, copy or share the
+  project, and in a container it is wiped by a rebuild.
+
+    1) In the project folder   — travels with the project, survives a rebuild
+    2) In Claude's home folder — leave it where Claude puts it
+
+ASK
+    printf '  Choice [1]: '; read -r ans || ans=""
+    case "$ans" in 2) INVERT=0 ;; *) INVERT=1 ;; esac
+  fi
+
+  if [ "$RETENTION_SET" != 1 ]; then
+    cat <<'ASK'
+
+  Delete old session transcripts?
+
+  A full transcript of every session is copied into the project
+  (.claude-transcripts/) so it survives Claude's home folder being cleared.
+  Nothing removes them, so that folder grows for as long as the project lives —
+  and it holds the complete text of every conversation.
+
+    Press Enter to keep them forever, or type a number of days after which
+    old ones are deleted (e.g. 30). The most recent 3 are always kept.
+
+ASK
+    printf '  Days [keep forever]: '; read -r ans || ans=""
+    case "$ans" in
+      ''|0|no|none|never)  RETENTION_DAYS=0 ;;
+      *[!0-9]*)            say "not a number — keeping transcripts forever."; RETENTION_DAYS=0 ;;
+      *)                   RETENTION_DAYS="$ans" ;;
+    esac
+  fi
+  echo
+fi
+
 # --- git ---------------------------------------------------------------------
 if [ "$CREATE" = 1 ] && ! git -C "$TARGET" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   if [ "$DRY" = 1 ]; then say "would: git init"
@@ -116,15 +175,33 @@ for h in inject_session_log.sh save_transcripts.sh; do
   ln -sfn "../skills/setup-session-log/$h" "$TARGET/.claude/hooks/$h"
   say "hook $h ✅ (symlink)"
 done
+if [ "$RETENTION_DAYS" -gt 0 ] 2>/dev/null; then
+  if [ "$DRY" = 1 ]; then
+    say "would: enable transcript rotation (${RETENTION_DAYS}d, keep newest 3)"
+  else
+    ln -sfn "../skills/setup-session-log/prune_transcripts.sh" "$TARGET/.claude/hooks/prune_transcripts.sh"
+    cat > "$TARGET/.claude/hooks/transcript-retention.conf" <<CONF
+# Retention policy for .claude-transcripts/ (read by prune_transcripts.sh).
+# These files are the full verbatim conversation — treat as sensitive.
+RETENTION_DAYS=$RETENTION_DAYS
+KEEP_NEWEST=3
+CONF
+    say "transcripts: rotating after ${RETENTION_DAYS}d, newest 3 always kept ✅"
+  fi
+else
+  say "transcripts: kept forever (no rotation). Prune by hand, or re-run with"
+  say "             --retention-days N. The folder holds full conversations."
+fi
 run chmod +x "$TARGET/.claude/skills/setup-session-log/inject_session_log.sh" \
-              "$TARGET/.claude/skills/setup-session-log/save_transcripts.sh"
+              "$TARGET/.claude/skills/setup-session-log/save_transcripts.sh" \
+              "$TARGET/.claude/skills/setup-session-log/prune_transcripts.sh"
 [ -f "$SRC/.claude/skills/sync-mem/git_state.sh" ] && run chmod +x "$TARGET/.claude/skills/sync-mem/git_state.sh"
 
 # --- settings.json: merge, never clobber -------------------------------------
 if [ "$DRY" = 1 ]; then
   say "would: merge SessionStart/SessionEnd/Stop hooks into .claude/settings.json"
 else
-python3 - "$TARGET" <<'PY'
+python3 - "$TARGET" "$RETENTION_DAYS" <<'PY'
 import json, pathlib, sys
 target = sys.argv[1]
 sp = pathlib.Path(target, ".claude/settings.json")
@@ -138,6 +215,8 @@ B = "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks"
 reg = {"SessionStart": [(f"{B}/inject_session_log.sh", 10, "Loading session-log chain head...")],
        "SessionEnd":   [(f"{B}/save_transcripts.sh",   15, "Mirroring transcripts...")],
        "Stop":         [(f"{B}/save_transcripts.sh",   15, "Mirroring transcripts...")]}
+if int(sys.argv[2]) > 0:   # rotation requested — prune after the mirror, once per session
+    reg["SessionEnd"].append((f"{B}/prune_transcripts.sh", 10, "Pruning old transcripts..."))
 hooks, added = cfg.setdefault("hooks", {}), 0
 for event, entries in reg.items():
     matchers = hooks.setdefault(event, [])
@@ -195,10 +274,10 @@ if [ "$INVERT" = 1 ]; then
     fi
   fi
 else
-  say "memory: NOT inverted (--no-invert-memory). The memory dir stays under"
-  say "        ~/.claude/. In a container that is the ephemeral half, so it will"
-  say "        not survive a rebuild; inverting later means migrating files and"
-  say "        rewriting their relative links. See README."
+  say "memory: staying in Claude's home folder (~/.claude), not the project."
+  say "        In a container that is the ephemeral half, so it will not survive"
+  say "        a rebuild; moving it into the project later means migrating files"
+  say "        and rewriting their relative links. Re-run with --invert-memory."
 fi
 
 # --- initial commit (only for a repo this run created) ------------------------

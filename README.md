@@ -113,6 +113,32 @@ Copy both skills, symlink the hooks into `.claude/hooks/`, merge `settings.json`
 and relocate the project's memory dir into the project (below). Both are re-runnable, and
 `--dry-run` prints the plan without touching anything.
 
+#### Two questions it asks
+
+On a terminal the installer asks about the two choices that are genuinely yours. Piped or redirected
+— CI, a script — it asks nothing and takes the defaults, so it never blocks an unattended run. Any
+flag you pass settles that question and suppresses its prompt; `-y` takes every default silently.
+
+| Question | Default | Flag |
+|---|---|---|
+| Where should this project's memory live — the project folder, or Claude's home folder? | **project folder** | `--no-invert-memory` |
+| Delete session transcripts older than N days? | **keep forever** | `--retention-days N` |
+
+**Memory location.** Between sessions Claude keeps notes about a project — decisions, context, what
+it learned. By default that store lives in Claude's own home folder (`~/.claude`), away from your
+project: it doesn't travel when you move, copy or share the project, and in a container a rebuild
+wipes it. Choosing the project folder puts the real files in the project and leaves a symlink behind
+in `~/.claude`, so the notes live and die with the project. That's the default, and in a container
+it's close to required — see the box below for exactly what gets moved.
+
+**Transcripts.** A full transcript of every session is copied into `.claude-transcripts/` so it
+survives Claude's home folder being cleared. Nothing removes them, so the folder grows for the life
+of the project and holds the complete text of every conversation. Keeping them forever is the
+default — deleting someone's history is not a sensible thing to do by default — but you can name a
+retention period, and the 3 most recent are always kept whatever their age. Choose rotation and the
+installer wires a `prune_transcripts.sh` hook and writes the knobs to
+`.claude/hooks/transcript-retention.conf`; decline and no deletion code is installed at all.
+
 Neither scaffolds the chain itself: the first log needs today's date, the session UUID, and a real
 summary of the session, which is agent work. `/setup-session-log` finishes that, and is idempotent —
 it picks up from whatever the installer left.

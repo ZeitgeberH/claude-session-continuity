@@ -209,8 +209,9 @@ Ensure the FIRST line of `MEM/MEMORY.md` (above any heading) is:
 Add it if missing; never duplicate.
 
 ### Step 6 — Install the hook scripts
-`mkdir -p PROJECT/.claude/hooks/`, then **symlink** both bundled scripts into it (relative links, so
-they survive the project being moved or mounted at a different path):
+`mkdir -p PROJECT/.claude/hooks/`, then **symlink** the two required scripts into it (relative links,
+so they survive the project being moved or mounted at a different path). A third,
+`prune_transcripts.sh`, is **opt-in** — wire it only if the user asks for transcript rotation:
 
 ```sh
 cd PROJECT/.claude/hooks
@@ -226,6 +227,16 @@ chmod +x ../skills/setup-session-log/*.sh                    # the real files ca
 > failure mode that stops upstream fixes from reaching people. A symlink makes "update the skill"
 > and "update the running hook" the same action. If a project genuinely needs a divergent hook,
 > replace the link with a real file deliberately, so the fork is visible in `ls -l`.
+>
+> **Transcript rotation is opt-in, and off by default.** `save_transcripts.sh` only ever adds, so
+> `.claude-transcripts/` grows for the life of the project. `prune_transcripts.sh` ships alongside it
+> and deletes mirrored `.jsonl` older than `RETENTION_DAYS`, always keeping the `KEEP_NEWEST` most
+> recent whatever their age, logging to `PRUNE.log`, and touching the mirror only — never the
+> harness's own transcripts. Wire it (symlink + a `SessionEnd` registration + a
+> `.claude/hooks/transcript-retention.conf` carrying the two knobs) **only when the user chooses a
+> retention period.** Ask; don't assume. Deleting somebody's conversation history is not a sensible
+> default, and a project that never enables rotation should carry no deletion code on a hook path at
+> all. `install.sh` asks this question at install time.
 >
 > Verify with `ls -l PROJECT/.claude/hooks/` (expect `-> ../skills/...`) and by pipe-testing through
 > the link in Step 9. If the skill is installed at *user* scope (`~/.claude/skills/`) rather than in
