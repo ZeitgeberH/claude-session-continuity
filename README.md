@@ -33,17 +33,35 @@ git log and code alone — roughly 10x the tokens of reading one pre-digested en
 An append-only, prev/next-linked chain of per-session summaries
 (`session_logs/session_NNN_YYYY-MM-DD.md`), auto-injected into every new session via a
 `SessionStart` hook — so an agent starts already knowing what happened and what's next, without a
-"read the log first" reminder.
+"read the log first" reminder. Each entry records the session id, its transcript, and the commit
+the work sat at, so a later session can run `git diff <commit>..HEAD` and line the narrative up
+against the code.
 
-Includes a staleness check: warns if the working tree has changed since the chain head's own date,
-instead of silently trusting a log that might be out of date. Portable — GNU `stat` first, BSD/
-macOS `stat -f` fallback.
+Setting it up also installs the machinery that keeps the chain honest and durable:
+
+- **A staleness check** in the same hook — warns when the working tree moved on after the chain
+  head's date, instead of silently trusting a log that may be out of date. Uses `git status` in a
+  repo, file mtimes otherwise, and *says so* when it can do neither, since a check that can never
+  fire is worse than none. Portable: GNU `stat` first, BSD/macOS `stat -f` fallback.
+- **A bootstrap notice**, also in that hook: if the skills are installed but no chain exists yet,
+  it tells the agent to create one. That is what makes `install.sh` the only setup step you perform.
+- **A transcript mirror** (`SessionEnd` + `Stop`) copying the raw `.jsonl` into the project, so the
+  `transcript:` pointer in every log still resolves after the harness directory is cleared. Optional
+  retention is available and off by default.
+- **The memory relocation** — the project's memory store moves into the project, with the harness
+  directory left as a symlink to it, so memory travels with the project and survives a container
+  rebuild.
 
 ## `sync-mem`
 
 Persists a session's durable findings — corrections, decisions, project state — into memory and
 the session-log chain, at natural checkpoints. Covers general memory plus any project-specific
 extension declared in `.claude/sync-mem-project.md`.
+
+Before it reports, it audits what it just saved: that every path a memory entry cites still
+resolves, that nothing written is missing from the index, and that the git state is what you think
+it is — uncommitted work, unpushed commits, or a chain head that never got committed and so is
+invisible to every clone. It reports that state; it never commits or pushes on your behalf.
 
 ## Installation
 
@@ -186,6 +204,20 @@ What to track, once you do:
 Copy both skills, symlink the hooks into `.claude/hooks/`, merge `settings.json`, seed `.gitignore`,
 and relocate the project's memory dir into the project (below). Both are re-runnable, and
 `--dry-run` prints the plan without touching anything.
+
+#### All the flags
+
+| Flag | Effect |
+|---|---|
+| `--create` | Create the target directory, `git init` it, and make the initial commit |
+| `--dry-run` | Print the plan and write nothing |
+| `--no-invert-memory` | Leave the memory store in Claude's home folder |
+| `--invert-memory` | Move it into the project — the default; accepted for explicitness |
+| `--retention-days N` | Delete mirrored transcripts older than N days (`0` = keep forever, the default) |
+| `-y`, `--yes` | Take every default; ask nothing, even on a terminal |
+| `-h`, `--help` | Print usage and exit |
+
+Any flag settles its question and suppresses the matching prompt.
 
 #### Two questions it asks
 
