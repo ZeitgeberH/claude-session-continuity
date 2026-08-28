@@ -41,7 +41,7 @@ Persists a session's durable findings — corrections, decisions, project state 
 the session-log chain, at natural checkpoints. Covers general memory plus any project-specific
 extension declared in `.claude/sync-mem-project.md`.
 
-## Installation  Instruction 
+## Installation
 
 Clone this repo once, then pick the mode that matches your situation:
 
@@ -51,7 +51,20 @@ git clone https://github.com/ZeitgeberH/agentSkills_mem
 
 ### New project
 
-#### Step 1: Initialization a project folder. 
+Three steps. The first is one shell command; the other two just need you to start Claude Code.
+
+| Step | What happens | Where you do it |
+|---|---|---|
+| **1** | Create the folder, install the skills, make the first commit | your shell |
+| **2** | Create the session-log chain — `/setup-session-log` | first Claude Code session |
+| **3** | Start one more session — the chain head starts auto-injecting | second session |
+
+Steps 2 and 3 are not busywork. Skills and hooks are registered when a session **starts**, so the
+installer in Step 1 cannot use them itself; and the session in Step 2 begins before the chain exists,
+so there is nothing to inject until the one after it. From Step 3 onward it is automatic and you
+never think about this again.
+
+#### Step 1: Initialize the project folder
 
 ```sh
 ./agentSkills_mem/install.sh --create ~/new-project
@@ -119,9 +132,8 @@ And one commit:
 8de4f69 Initial commit: session-log + memory continuity system
 ```
 
-**What is not there yet:** `session_logs/`. The chain starts on your first real session — see
-[After it runs](#after-it-runs--the-session-boundary-and-why-it-isnt-optional) for the three steps
-the installer prints on exit.
+**What is not there yet:** `session_logs/`. That is Step 2's job, below — its absence here is
+expected, not a failed install.
 
 **Two things worth knowing:**
 
@@ -137,9 +149,36 @@ session log being written for it. In a git repo it checks with `git status` — 
 Without one it falls back to walking the file tree, which is slower and needs tuning on projects
 with big data folders. A repo also lets each log's "Done this session" sit next to real commits.
 
-#### Step 2: Initialization session logs.
+#### Step 2: Initialize the session-log chain
 
-Start a claude code session, run /setup-session-log
+Start Claude Code in the project and run `/setup-session-log`:
+
+```sh
+cd ~/new-project && claude
+```
+
+```
+/setup-session-log
+```
+
+It writes `session_logs/session_001_<today>.md` — the first entry in the chain — along with the
+memory index and the protocol file that later sessions follow. It is idempotent: it detects what
+Step 1 already installed and only fills in the rest, so it will report the hooks and settings as
+already in place. That is the expected handoff, not a problem.
+
+Commit what it wrote, alongside the work it describes.
+
+#### Step 3: Start one more session
+
+```sh
+claude
+```
+
+From here on the chain head is injected into every session automatically — the previous session's
+summary and planned next steps are in context before you type anything. The Step 2 session started
+before the chain existed, which is why it took one more session to see this.
+
+Then just work. Run `/sync-mem` at checkpoints to append the next log.
 
 
 ### Existing project — adding to work you already have
@@ -147,6 +186,9 @@ Start a claude code session, run /setup-session-log
 ```sh
 ./agentSkills_mem/install.sh ~/existing-project
 ```
+
+Then the same two session steps as a new project: start Claude Code and run `/setup-session-log`,
+then start one more session — see [After it runs](#after-it-runs--the-session-boundary-and-why-it-isnt-optional).
 
 The directory must already exist. It does **not** need a `.claude/` directory — that gets created.
 `settings.json` is merged, not overwritten: existing keys (`permissions`, `mcpServers`, other hooks)
