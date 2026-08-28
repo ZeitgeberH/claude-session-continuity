@@ -43,9 +43,69 @@ extension declared in `.claude/sync-mem-project.md`.
 
 ## Installing in another project
 
-Copy `.claude/skills/setup-session-log/` and/or `.claude/skills/sync-mem/` into the target
-project's `.claude/skills/`, then invoke `/setup-session-log` there to scaffold the chain and
-register the hook. See each skill's `SKILL.md` for full detail.
+### Recommended order — restart between copy and setup
+
+Skills and hooks are registered when a session **starts**, not when their files appear on disk.
+Copying a skill in mid-session and invoking it immediately fails with `Unknown skill`, and a
+`SessionStart` hook registered mid-session first fires next session. So the install runs cleanly in
+this order, and awkwardly in any other:
+
+```
+git init (+ first commit)          # see below — do this before the chain exists
+        ↓
+copy .claude/skills/{setup-session-log,sync-mem}/ into the target project
+        ↓
+RESTART the session                # skills become invocable here
+        ↓
+/setup-session-log                 # scaffolds the chain, registers the hooks
+        ↓
+RESTART the session                # hooks become active here; chain head auto-injects
+        ↓
+…work…  →  /sync-mem               # appends the next log
+```
+
+Skipping the restarts doesn't corrupt anything, but nothing you installed actually runs: the
+chain head is never injected and the transcript mirror never fires, so the install stays untested
+while looking complete. If you must set up in one session, drive it by reading each `SKILL.md` and
+following the procedure by hand — and treat the *next* session start as the real acceptance test.
+
+### `git init` first
+
+Initialize the repository **before** scaffolding the chain. Two concrete payoffs:
+
+- **The staleness check gets its good mode.** The `SessionStart` hook warns when work happened
+  without a session log being written for it, and it has two implementations: `git` mode asks
+  `git status --porcelain` (precise, instant), while `mtime` mode walks the tree with `find` and
+  needs a hand-tuned `.claude/hooks/staleness-prune.txt` on any project with data or vendor
+  directories. Not fatal to init later — the hook probes for a repo at runtime every session and
+  upgrades itself — but you get the cheap mode from day one. If you do init later, commit soon
+  after: between `init` and the first commit every file is untracked, which needlessly widens
+  git mode's candidate set.
+- **The chain becomes auditable.** Each log's "Done this session" sits next to real commits, which
+  is the property the prev/next design exists to give you.
+
+Commit the chain (`session_logs/`) — it's the shareable layer. Gitignore
+`.claude-transcripts/` and `.claude/memory/store/`: both carry machine-specific paths, and
+transcripts are the full verbatim conversation with no rotation.
+
+### Running in a container? The memory-dir inversion is not optional
+
+`/setup-session-log` points the harness memory dir at the project
+(`~/.claude/projects/<cwd>/memory` becomes a symlink into `PROJECT/.claude/memory/store/`) rather
+than the reverse. On a plain host that's a portability nicety. In a container it's the whole ball
+game: `~/.claude/` sits on the **ephemeral** side while the project is the bind-mounted
+**persistent workspace**, so an un-inverted memory dir is destroyed by the next rebuild. Inverted,
+the real files live in the workspace and only a symlink is disposable.
+
+This is the same reasoning behind the transcript mirror, which copies the raw `.jsonl` files into
+the workspace for the identical reason — a real rebuild once destroyed ~4 months of them. Together
+they're what makes a containerized project's history durable. `SKILL.md` Step 1 has the mechanics,
+including why the link must never run the other way.
+
+### The rest
+
+Then invoke `/setup-session-log` in the target project to scaffold the chain and register the
+hooks. See each skill's `SKILL.md` for full detail.
 
 ## License
 

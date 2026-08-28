@@ -45,7 +45,7 @@ Resolve `PROJECT` = current working directory. If `session_logs/` already exists
 Find the directory that holds `MEMORY.md`:
 - If `PROJECT/.claude-memory/MEMORY.md` exists → `MEM = PROJECT/.claude-memory`.
 - Else if `PROJECT/.claude/memory/MEMORY.md` exists → `MEM = PROJECT/.claude/memory`.
-- Else find the auto-memory dir (the harness names it in the environment, typically `~/.claude/projects/<sanitized-cwd>/memory/`) and make it reachable from the project root — see the box below for **which direction to link**. If no memory exists at all yet, just create `PROJECT/.claude/memory/` and an empty `MEMORY.md` (no link needed).
+- Else find the auto-memory dir (the harness names it in the environment, typically `~/.claude/projects/<sanitized-cwd>/memory/`) and make it reachable from the project root — see the box below for **which direction to link**. **This includes the case where no memory exists yet:** create `PROJECT/.claude/memory/store/` with an empty `MEMORY.md` and invert the link now. Deferring it is a false economy — see *Invert up front* below.
 
 The hook resolves `PROJECT/.claude-memory/session_logs` (or `.claude/memory/session_logs`) at runtime, so `MEM` must be reachable under one of those.
 
@@ -68,6 +68,24 @@ The hook resolves `PROJECT/.claude-memory/session_logs` (or `.claude/memory/sess
 > reading `<auto-memory-dir>/MEMORY.md` (through the link) and, if containerized,
 > `ls` the store from inside the container. Then delete the `.bak`.
 > Gitignore `store/` unless the memory is genuinely shareable — it carries machine-specific paths.
+>
+> **★ Invert up front, even when the auto-memory dir is empty.** It is tempting to skip this on a
+> fresh project ("no memory yet, nothing to link") and invert later if it turns out to matter. Don't:
+> inverting afterwards means `MEMORY.md`, `for_next_session.md` and `session-log-protocol.md` all move
+> down one level into `store/`, so every relative link they carry to the chain has to be rewritten
+> `session_logs/` → `../session_logs/`, and any decision already recorded in the chain saying "not
+> inverted" is now false and needs correcting. The empty case is exactly when inverting is free.
+>
+> **★ Why the inversion is the intended end state, not an optional hardening — containers.** When
+> Claude Code runs in a container or devcontainer, `~/.claude/` typically lives on the *ephemeral*
+> side and the project is the bind-mounted *persistent* workspace. Un-inverted, the memory dir sits
+> in the disposable half and a rebuild takes it with it. Inverted, the real files live in the
+> persistent workspace and the throwaway half holds only a symlink — so memory survives exactly as
+> long as the project does. This is the same reasoning as `save_transcripts.sh` (Step 6), which
+> mirrors the raw `.jsonl` transcripts into the workspace for the identical reason: everything the
+> harness keeps outside the project is on borrowed time. The pair — inverted memory dir + mirrored
+> transcripts — is what makes a containerized project's history durable. Treat "host machine, no
+> container" as the special case that merely *tolerates* skipping it, not the default.
 
 ### Step 2 — Create the chain directory
 `mkdir -p MEM/session_logs`.
@@ -152,13 +170,37 @@ Ensure the FIRST line of `MEM/MEMORY.md` (above any heading) is:
 Add it if missing; never duplicate.
 
 ### Step 6 — Install the hook scripts
-Copy **both** bundled scripts to `PROJECT/.claude/hooks/` (mkdir -p first) and `chmod +x` them:
-- `inject_session_log.sh` — the SessionStart injector + staleness check.
-- `save_transcripts.sh` — the transcript mirror.
+`mkdir -p PROJECT/.claude/hooks/`, then **symlink** both bundled scripts into it (relative links, so
+they survive the project being moved or mounted at a different path):
 
-Both are portable: they resolve the project and memory dirs at runtime and use python3, not jq.
+```sh
+cd PROJECT/.claude/hooks
+ln -sf ../skills/setup-session-log/inject_session_log.sh .   # SessionStart injector + staleness check
+ln -sf ../skills/setup-session-log/save_transcripts.sh   .   # transcript mirror
+chmod +x ../skills/setup-session-log/*.sh                    # the real files carry the bit
+```
 
-Then **gitignore the mirror** — add `.claude-transcripts/` to `PROJECT/.gitignore` (create it if absent). Transcripts are large (tens of MB per long session), grow without bound, and contain the full verbatim conversation. Their job is to survive the harness directory, not to be committed. ⚠ Tell the user the directory needs periodic pruning; nothing rotates it.
+> **★ Symlink, don't copy — otherwise the hooks silently fork from the skill.** Copying leaves two
+> independent versions of each script. They are identical on install day and drift the moment the
+> skill is updated: re-copying `.claude/skills/` from upstream updates the *skill* while
+> `.claude/hooks/` keeps running the old code, with nothing reporting the mismatch — the exact
+> failure mode that stops upstream fixes from reaching people. A symlink makes "update the skill"
+> and "update the running hook" the same action. If a project genuinely needs a divergent hook,
+> replace the link with a real file deliberately, so the fork is visible in `ls -l`.
+>
+> Verify with `ls -l PROJECT/.claude/hooks/` (expect `-> ../skills/...`) and by pipe-testing through
+> the link in Step 9. If the skill is installed at *user* scope (`~/.claude/skills/`) rather than in
+> the project, a relative link cannot reach it — copy in that case and note the drift risk in the
+> session log.
+
+Both scripts are portable: they resolve the project and memory dirs at runtime and use python3, not jq.
+
+Then **gitignore the mirror** — add `.claude-transcripts/` to `PROJECT/.gitignore` (create it if absent). Transcripts are large (tens of MB per long session), grow without bound, and contain the full verbatim conversation. Their job is to survive the harness directory, not to be committed. ⚠ Tell the user the directory needs periodic pruning; **nothing rotates it**. The `Stop` hook
+refreshes the mirror after every assistant turn, so a single long session's file grows to tens of MB
+and the directory only ever grows. Two things follow: agree a retention rule at install time (e.g.
+delete `.jsonl` files older than N days), and treat the directory as *sensitive* — it is the full
+verbatim conversation, including anything pasted into it. Gitignoring keeps it out of the repo but
+not out of a zip, a backup, or an image built from the workspace.
 
 ### Step 7 — Register the hooks
 **Read** `PROJECT/.claude/settings.json` first (create `{}` if missing). **Merge** (preserve all existing keys, especially `mcpServers`/`permissions`) these three registrations into `hooks`:
