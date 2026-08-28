@@ -359,28 +359,50 @@ deletion code is installed at all.
 (`SessionEnd` and `Stop`) and delete `.claude-transcripts/`. Nothing else depends on it; you lose only
 the ability to drill from a session log into its raw transcript.
 
-### From here on
+### Sync reminders, and where to change the cadence
 
-#### Reminders to save
+`/sync-mem` is invoked, not automatic, so the obvious failure is forgetting — and losing a session's
+findings. A `Stop` hook nudges the agent every N turns.
 
-`/sync-mem` is invoked, not automatic — so the obvious failure is forgetting, and losing a session's
-findings. A `Stop` hook nudges the agent every **`--nudge-turns N`** turns (default 25).
+**The cadence lives in one file, and you can change it whenever you like:**
 
-A turn boundary is the one moment a reminder can actually be used: the agent has a turn, and context
-to spare. The counter resets whenever the chain head is written, so a session that syncs on its own
-is never nagged. Keep N highish — a turn count cannot tell a natural checkpoint from the middle of a
-debugging chain, and a sync forced with nothing durable to save is churn. The nudge never blocks, and
-says not to interrupt what you asked for in order to sync.
+```sh
+.claude/hooks/sync-nudge.conf
+```
 
-The cadence lives in `.claude/hooks/sync-nudge.conf` and is read at runtime, so you can change it
-there without re-running the installer. `--no-sync-nudge` skips the hook entirely.
+```ini
+# remind every N turns; 0 disables the reminder entirely
+NUDGE_EVERY_TURNS=25
+
+# on a compaction, record that it happened so the next sync can flag lost detail
+NOTE_COMPACTIONS=1
+```
+
+**It is read at runtime, so edits take effect immediately — no reinstall, no touching
+`settings.json`.** Set it at install time with `--nudge-turns N` if you already know what you want;
+change your mind later by editing the file. The hook is registered even when the count is `0`, so
+turning the reminder back on is a one-line edit rather than a reinstall.
+
+| You want | Set |
+|---|---|
+| Frequent prompting on short, dense sessions | `NUDGE_EVERY_TURNS=10` |
+| The default — occasional, rarely intrusive | `NUDGE_EVERY_TURNS=25` |
+| Long sessions where you sync by habit | `NUDGE_EVERY_TURNS=40` |
+| No reminders, fully manual | `NUDGE_EVERY_TURNS=0` |
+| Never install the hook at all | `--no-sync-nudge` at install |
+
+**Why a turn count.** A turn boundary is the one moment a reminder can be used: the agent has a turn,
+and context to spare. Keep N highish — a turn count cannot tell a natural checkpoint from the middle
+of a debugging chain, and a sync forced with nothing durable to save is churn. The counter resets
+whenever the chain head is written, so a session that syncs on its own is never nagged, and the nudge
+never blocks: it says explicitly not to interrupt what you asked for in order to sync.
 
 **When a compaction happens anyway**, a `PreCompact` hook appends a line to
 `.claude/hooks/.compactions` recording it. It deliberately does *not* ask for a sync there — the
 hooks reference states there is **no turn between the `PreCompact` hook running and compaction
 happening**, so any request made there is unreachable until the detail it wanted is already gone. The
-note is the useful part: the next `/sync-mem` reports how many compactions have occurred and marks
-which findings are reconstructed rather than remembered, then clears the file.
+note is the useful part: the next `/sync-mem` reports how many compactions occurred and marks which
+findings are reconstructed rather than remembered, then clears the file.
 
 > **Why a note and not a reminder.** The danger after a compaction is not only lost detail — it is a
 > later entry written from a summary but presented as if it were first-hand. The chain is only worth
@@ -391,7 +413,10 @@ which findings are reconstructed rather than remembered, then clears the file.
 > "Remind me at 40% context" is not implementable at all: **no hook event receives context-window
 > usage or token counts.** Turn count is the honest approximation.
 
-#### Working
+Both files the hooks write — `.sync-nudge.state` (the counter) and `.compactions` — are gitignored;
+they are per-machine, per-session scratch.
+
+### From here on
 
 Work normally. Run **`/sync-mem`** at checkpoints — when something is worth keeping, or before you
 step away — and it appends a log for the session and saves what is durable to memory. From your
