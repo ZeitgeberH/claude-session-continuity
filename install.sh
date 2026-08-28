@@ -242,13 +242,16 @@ if [ "$NUDGE" = 1 ]; then
 # When to remind the agent to run /sync-mem (read by nudge_sync.sh).
 # NUDGE_EVERY_TURNS: remind every N turns; 0 disables. Read at runtime, so you can
 #   change it here without re-running the installer.
-# There is no compaction trigger: PreCompact cannot be acted on (no turn between it
-#   and compaction) and PostCompact fires when the detail is already gone, so the
-#   sync it prompts would record a degraded summary.
+# NOTE_COMPACTIONS: on PreCompact, append a line to .claude/hooks/.compactions saying a
+#   compaction happened. It does NOT ask for a sync there — no turn exists between that
+#   hook and compaction — but the note lets the next sync flag which findings are
+#   reconstructed rather than remembered.
 NUDGE_EVERY_TURNS=$NUDGE_TURNS
+NOTE_COMPACTIONS=1
 CONF
     if [ "$NUDGE_TURNS" -gt 0 ] 2>/dev/null; then
       say "sync reminders: every ${NUDGE_TURNS} turns ✅ (change it in sync-nudge.conf)"
+      say "                compactions are noted for the next sync to flag ✅"
     else
       say "sync reminders: hook installed but disabled (NUDGE_EVERY_TURNS=0)."
       say "                Set it in .claude/hooks/sync-nudge.conf to enable."
@@ -290,6 +293,10 @@ if sys.argv[4] == "1":     # sync reminders — always register, even at 0 turns
     # hook were only registered when the count is non-zero, editing that conf later
     # would silently do nothing, which is exactly what happened to one install.
     reg.setdefault("Stop", []).append((f"{B}/nudge_sync.sh", 10, "Checking session-log state..."))
+    # Last resort: cannot ask for a sync here (no turn before compaction), but it can
+    # record that one happened, so the next sync says so instead of writing a
+    # reconstructed finding as if it were first-hand.
+    reg["PreCompact"] = [(f"{B}/nudge_sync.sh", 10, "Noting compaction...")]
 hooks, added = cfg.setdefault("hooks", {}), 0
 for event, entries in reg.items():
     matchers = hooks.setdefault(event, [])
@@ -313,7 +320,7 @@ else
   ign=""
   [ "$MIRROR" = 1 ] && ign="$ign .claude-transcripts/"
   [ "$INVERT" = 1 ] && ign="$ign .claude/memory/store/"
-  [ "$NUDGE"  = 1 ] && ign="$ign .claude/hooks/.sync-nudge.state"
+  [ "$NUDGE"  = 1 ] && ign="$ign .claude/hooks/.sync-nudge.state .claude/hooks/.compactions"
   for e in $ign; do grep -qxF "$e" "$gi" || echo "$e" >> "$gi"; done
   if [ -n "$ign" ]; then say "gitignore ✅ ($(echo $ign); the chain stays tracked)"
   else say "gitignore: nothing to ignore (chain stays tracked)"; fi

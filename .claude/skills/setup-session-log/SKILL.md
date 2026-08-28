@@ -16,9 +16,10 @@ Four components get installed:
 4. **A sync reminder** (`nudge_sync.sh`) — a `Stop` hook nudging the agent to run `/sync-mem` every
    `NUDGE_EVERY_TURNS` turns (default 25, read at runtime from `sync-nudge.conf`). Register it
    whenever reminders are wanted, **even at 0 turns**: the count is a runtime setting, so a hook
-   registered only when it is non-zero makes the config file silently inert. Compaction triggers were
-   tried and removed — `PreCompact` cannot be acted on (no turn between it and compaction) and
-   `PostCompact` fires when the detail is already gone. No context-percentage trigger exists, because
+   registered only when it is non-zero makes the config file silently inert. A `PreCompact` hook additionally records
+   each compaction to `.claude/hooks/.compactions` — it cannot ask for a sync there (no turn exists
+   between that hook and compaction), but the note lets the next sync mark which findings are
+   reconstructed rather than remembered. No context-percentage trigger exists, because
    no hook event receives context-window usage or token counts.
 5. **The maintenance protocol** — written into the project so `/sync-mem` (or session end) APPENDS a new log + continuity check rather than overwriting.
 

@@ -103,7 +103,14 @@ Run these checks on the memory you just touched (new + edited entries from Step 
 2. **Smoke-import**. For any Python module the memory promises is callable as advertised (e.g. "use `make_figure1.cluster_and_embed`"), do a one-line `python -c "import …; print('OK')"`. Catches stale references after refactors.
 3. **Index completeness.** Compare the directory listing of the memory folder against `MEMORY.md` — every entry file (`<type>_*.md`) should appear as exactly one indexed line. Exclude non-entry files: `MEMORY.md` itself, `for_next_session.md`, and session-log infrastructure (`session-log-protocol.md`). Flag genuine orphans.
 4. **Carry-over coverage.** Cross-reference the carry-over candidates from Step 3 (and anything you're about to put in the session-log carry-over, or `for_next_session.md` in the fallback) against the in-session task tracker (TodoWrite list, plan, or whatever the session was using). Anything still pending that isn't on the carry-over list is a gap — either close it now (decide + save) or add it.
-5. **Spot-check verifiable claims (opportunistic).** If a saved memory cites a number ("2451 MCs", "k=8 default", "7/8 MET-8 in c2") *and that claim might have changed since the memory was last edited*, pick one or two and verify against current data. Skip this check entirely when new memory adds claims that don't overlap with existing files — there's nothing to spot-check.
+5. **Compaction check.** If `.claude/hooks/.compactions` exists and is non-empty, the context was
+compacted during this session: everything you know from before those points is a summary, not a
+recollection. Say so in the session log — name which sections are reconstructed — rather than writing
+them with the same confidence as first-hand findings. **Then clear the file**, so the next session's
+check reports only its own compactions. A chain whose entries are uniformly confident is less useful
+than one that marks its weak spots.
+
+6. **Spot-check verifiable claims (opportunistic).** If a saved memory cites a number ("2451 MCs", "k=8 default", "7/8 MET-8 in c2") *and that claim might have changed since the memory was last edited*, pick one or two and verify against current data. Skip this check entirely when new memory adds claims that don't overlap with existing files — there's nothing to spot-check.
 
 6. **Git state.** Run the bundled `git_state.sh` (read-only — it never stages, commits, or pushes):
 

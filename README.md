@@ -375,14 +375,21 @@ says not to interrupt what you asked for in order to sync.
 The cadence lives in `.claude/hooks/sync-nudge.conf` and is read at runtime, so you can change it
 there without re-running the installer. `--no-sync-nudge` skips the hook entirely.
 
-> **There is no compaction trigger, and no context-percentage trigger.** Both were built and removed.
-> `PreCompact` cannot work: the hooks reference states there is **no turn between the `PreCompact`
-> hook running and compaction happening**, so the nudge could not be acted on until the detail it
-> wanted to save was already gone — it was registered, firing, and useless. `PostCompact` works
-> mechanically but by then the detail *is* gone, so the sync it prompts records a degraded
-> second-hand summary; that is worse than no entry, because the chain is only worth reading if its
-> entries can be trusted. And "remind me at 40% context" is not implementable at all — **no hook
-> event receives context-window usage or token counts**.
+**When a compaction happens anyway**, a `PreCompact` hook appends a line to
+`.claude/hooks/.compactions` recording it. It deliberately does *not* ask for a sync there — the
+hooks reference states there is **no turn between the `PreCompact` hook running and compaction
+happening**, so any request made there is unreachable until the detail it wanted is already gone. The
+note is the useful part: the next `/sync-mem` reports how many compactions have occurred and marks
+which findings are reconstructed rather than remembered, then clears the file.
+
+> **Why a note and not a reminder.** The danger after a compaction is not only lost detail — it is a
+> later entry written from a summary but presented as if it were first-hand. The chain is only worth
+> reading if its entries can be trusted, so turning a silent loss into a stated one is worth more
+> than a prompt that arrives too late. `PostCompact` was tried too, and prompting a sync after the
+> fact just produces the confident-looking degraded entry this is meant to prevent.
+>
+> "Remind me at 40% context" is not implementable at all: **no hook event receives context-window
+> usage or token counts.** Turn count is the honest approximation.
 
 #### Working
 
