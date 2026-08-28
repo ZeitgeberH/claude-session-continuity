@@ -47,13 +47,40 @@ extension declared in `.claude/sync-mem-project.md`.
 
 ```sh
 git clone https://github.com/ZeitgeberH/agentSkills_mem
-./agentSkills_mem/install.sh ~/path/to/your-project        # add --invert-memory in a container
+./agentSkills_mem/install.sh ~/path/to/your-project
 ```
 
-Copies both skills, symlinks the hooks, merges `settings.json` (preserving existing keys), and
-seeds `.gitignore`. Re-runnable, and `--dry-run` shows the plan without touching anything. It
-deliberately stops short of scaffolding the chain — the first log needs today's date, the session
-UUID, and a real summary, which is agent work — so finish with `/setup-session-log`.
+Copies both skills, symlinks the hooks, merges `settings.json` (preserving existing keys), seeds
+`.gitignore`, and relocates the project's memory dir into the project (below). Re-runnable, and
+`--dry-run` shows the plan without touching anything. It deliberately stops short of scaffolding the
+chain — the first log needs today's date, the session UUID, and a real summary, which is agent work
+— so finish with `/setup-session-log`.
+
+> **⚠ What it writes outside the target project — read before running.**
+> By default the installer also does this, and it is the *only* thing it touches outside `TARGET`:
+>
+> ```
+> ~/.claude/projects/<sanitized-target>/memory   ->   TARGET/.claude/memory/store/
+> ```
+>
+> The directory is moved into the project and replaced with a symlink pointing at it. Any memory
+> already there is carried across first; the original is kept as `.bak` until the new location is
+> verified by reading `MEMORY.md` back through the link, then removed. A failed verification rolls
+> back automatically.
+>
+> **Why this is the default rather than a flag.** That path holds *this project's own memory* and
+> nothing else — so the move relocates data that already belongs to the project you named, it does
+> not reach into unrelated state. And the two mistakes are not symmetric: skipping it when you
+> should not means memory dies with the next container rebuild (`~/.claude/` is the ephemeral half,
+> the project is the persistent bind-mount), or, on a host, a later migration that moves three files
+> into `store/` and rewrites every relative link `session_logs/` → `../session_logs/`. Doing it when
+> you did not need to leaves a symlink you can undo in one command.
+>
+> Skip it with **`--no-invert-memory`**.
+>
+> One caveat the installer also prints: the harness path above is derived from the target path with
+> `/` replaced by `-`. If you later open the project by a *different* path — another mount point, a
+> symlinked route — Claude Code computes a different directory and will not see this memory.
 
 This works on an **existing** project, which is the common case: the payoff here is long-horizon
 work, and long-horizon work usually already has a repo. (That's also why this repo isn't a GitHub

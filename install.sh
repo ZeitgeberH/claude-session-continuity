@@ -9,19 +9,27 @@
 # session UUID, and an actual summary of the session. That's agent work, and
 # /setup-session-log is idempotent, so it picks up cleanly from whatever this left.
 #
-#   ./install.sh [TARGET_PROJECT]     (default: current directory)
-#   ./install.sh --dry-run ~/proj     show what would change, touch nothing
-#   ./install.sh --invert-memory ~/proj
+#   ./install.sh [TARGET_PROJECT]         (default: current directory)
+#   ./install.sh --dry-run ~/proj         show what would change, touch nothing
+#   ./install.sh --no-invert-memory ~/proj
+#
+# BY DEFAULT this also relocates the project's memory dir into the project:
+#   ~/.claude/projects/<sanitized-target>/memory  becomes a symlink pointing at
+#   TARGET/.claude/memory/store/. That is the only thing written outside TARGET.
+# It moves the target project's OWN memory (that path holds nothing else), and it
+# is what keeps memory alive across a container rebuild. --no-invert-memory skips
+# it. Backed up, verified, and rolled back automatically on failure.
 #
 # Re-runnable: every step checks before writing.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DRY=0; INVERT=0; TARGET=""
+DRY=0; INVERT=1; TARGET=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --dry-run)       DRY=1 ;;
-    --invert-memory) INVERT=1 ;;
+    --dry-run)          DRY=1 ;;
+    --no-invert-memory) INVERT=0 ;;
+    --invert-memory)    INVERT=1 ;;   # now the default; accepted for compatibility
     -h|--help)       sed -n '2,16p' "$0" | sed 's/^# \?//'; exit 0 ;;
     -*)              echo "unknown flag: $1" >&2; exit 2 ;;
     *)               TARGET="$1" ;;
@@ -126,6 +134,12 @@ if [ "$INVERT" = 1 ]; then
   sanitized="${TARGET//\//-}"
   auto="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$sanitized/memory"
   store="$TARGET/.claude/memory/store"
+  # The one write outside TARGET — always say so explicitly, before doing it.
+  say "memory: relocating this project's memory dir INTO the project."
+  say "        $auto"
+  say "     -> $store"
+  say "        (--no-invert-memory skips this. That path holds only this"
+  say "        project's memory, and the move is what survives a rebuild.)"
   if [ -L "$auto" ]; then say "memory: already a symlink -> $(readlink "$auto") ✅"
   elif [ "$DRY" = 1 ]; then say "would: invert $auto -> $store"
   else
@@ -135,15 +149,21 @@ if [ "$INVERT" = 1 ]; then
     [ -d "$auto" ] && mv "$auto" "$auto.bak"
     mkdir -p "$(dirname "$auto")"; ln -s "$store" "$auto"
     if [ -f "$auto/MEMORY.md" ]; then
-      rm -rf "$auto.bak"; say "memory: inverted ✅ (harness dir -> $store, verified)"
+      rm -rf "$auto.bak"
+      say "memory: inverted ✅ (verified by reading MEMORY.md back through the link)"
+      say "        ⚠ that harness path is derived from TARGET with '/' -> '-'. Open the"
+      say "        project by a different path (other mount point, symlinked route) and"
+      say "        the harness will use a different dir and not see this memory."
     else
       rm -f "$auto"; [ -d "$auto.bak" ] && mv "$auto.bak" "$auto"
       say "memory: inversion FAILED, rolled back"; exit 1
     fi
   fi
 else
-  say "memory: not inverted (pass --invert-memory). Recommended, and required if"
-  say "        you run in a container — see README."
+  say "memory: NOT inverted (--no-invert-memory). The memory dir stays under"
+  say "        ~/.claude/. In a container that is the ephemeral half, so it will"
+  say "        not survive a rebuild; inverting later means migrating files and"
+  say "        rewriting their relative links. See README."
 fi
 
 cat <<EOF
