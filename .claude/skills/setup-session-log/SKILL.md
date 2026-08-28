@@ -117,6 +117,8 @@ session: 001
 date: <today>
 session_id: <uuid>
 transcript: <path>/<uuid>.jsonl
+commit: <short sha of HEAD when this log was written, or null outside a repo>
+dirty: <true if the tree had uncommitted changes at that moment, else false>
 prev: null
 next: null
 ---
@@ -143,6 +145,21 @@ N/A — chain starts here.
 ## Skip-the-rabbit-hole reminders
 - <issues already resolved that a future session might re-investigate>
 ```
+
+> **★ `commit:` is what makes the chain auditable against the code.** With it, a future session can
+> run `git diff <commit>..HEAD` and see precisely what changed since a given session — the narrative
+> and the diff line up, which is the whole promise of an append-only chain sitting next to a repo.
+> Without it the log says "reworked the loader" and nothing connects that to a revision.
+>
+> Semantics: record **HEAD at the moment the log is written**. The log's *own* commit necessarily
+> lands afterwards, so `commit:` points at the state the narrative describes, not at the commit
+> containing the log — trying to make it self-referential is circular and cannot be done in one
+> commit. `dirty: true` records that the tree had uncommitted work at write time, which is the
+> honest signal that the narrative describes more than the repo does.
+>
+> Outside a repo write `commit: null` — and treat that as a prompt to `git init` (see README), not
+> as a neutral default. Don't retrofit `commit:` onto existing logs by rewriting history; start the
+> convention at the next log.
 
 ### Step 4 — Pointer file
 Write `MEM/for_next_session.md` as a thin pointer (NOT carry-over content):
@@ -239,10 +256,14 @@ Write `MEM/session-log-protocol.md` with the append rules below, and (if the pro
 At the end of a session (e.g. /sync-mem, or before stepping away):
 1. Find the current head = highest-numbered `session_logs/session_NNN_*.md`.
 2. **Continuity check:** read the head's "Next session should do"; the new log opens with a section marking each item DONE / DEFERRED / DROPPED (with why).
-3. Create `session_{NNN+1}_<today>.md` (prev: = old head, next: null). Sections: Continuity check, Done this session, Next session should do, Decisions on probation, Working context, Skip-the-rabbit-hole. Record `session_id`/`transcript` in frontmatter.
+3. Create `session_{NNN+1}_<today>.md` (prev: = old head, next: null). Sections: Continuity check, Done this session, Next session should do, Decisions on probation, Working context, Skip-the-rabbit-hole. Record `session_id`/`transcript` in frontmatter, plus `commit:` (short HEAD sha at write time) and `dirty:` so the entry is anchored to a revision.
 4. Back-link: set the previous head's `next:` to the new file.
 5. Refresh `for_next_session.md`'s pointer to the new head.
 NEVER overwrite an existing numbered log. Pass today's date + session_id in explicitly.
+6. **Commit the log with the work it describes.** The chain is tracked (unlike `store/` and
+   `.claude-transcripts/`), so an uncommitted log is invisible to every clone and to the next
+   machine. `/sync-mem`'s audit reports this; it does not act on it — committing stays the user's
+   call.
 ```
 
 ### Step 9 — Verify

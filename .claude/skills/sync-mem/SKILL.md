@@ -105,6 +105,25 @@ Run these checks on the memory you just touched (new + edited entries from Step 
 4. **Carry-over coverage.** Cross-reference the carry-over candidates from Step 3 (and anything you're about to put in the session-log carry-over, or `for_next_session.md` in the fallback) against the in-session task tracker (TodoWrite list, plan, or whatever the session was using). Anything still pending that isn't on the carry-over list is a gap — either close it now (decide + save) or add it.
 5. **Spot-check verifiable claims (opportunistic).** If a saved memory cites a number ("2451 MCs", "k=8 default", "7/8 MET-8 in c2") *and that claim might have changed since the memory was last edited*, pick one or two and verify against current data. Skip this check entirely when new memory adds claims that don't overlap with existing files — there's nothing to spot-check.
 
+6. **Git state.** Run the bundled `git_state.sh` (read-only — it never stages, commits, or pushes):
+
+```sh
+CLAUDE_PROJECT_DIR=<project> .claude/skills/sync-mem/git_state.sh
+```
+
+It prints one status line (branch, HEAD, uncommitted counts, unpushed/behind) plus a verdict on the
+chain head. Degrades quietly: a non-repo says so, a repo with no commits says so.
+
+The check exists because the `SessionStart` staleness check covers only one direction — *work
+happened, no log was written*. The opposite gap, **a log written while the work it describes sits
+uncommitted**, has nothing watching it, and `/sync-mem` is the one moment positioned to catch it:
+the log is being written right now. An uncommitted chain is also invisible to any clone, so the
+narrative silently stops being shareable.
+
+⚠ **Never auto-commit or auto-push.** Report the state and let the user decide. Committing on
+someone's behalf during a memory-sync is a surprising, hard-to-unpick side effect — especially when
+the tree holds unrelated in-flight work. Surfacing it is the job; acting on it is not.
+
 Output a single line per check: `✅` for clean, `⚠` for issues. If anything fails, surface it in the Step 9 report's **Open / ambiguous** block — don't silently skip.
 
 This audit is lightweight (~30 seconds of bash) and catches the real failure mode: memory entries that look complete at write time but are broken by the time a future session tries to act on them.
@@ -172,10 +191,20 @@ Saved:
 Skipped (deliberate):
   - <thing>: <reason>
 
+Git state:
+  - <the git_state.sh status line>
+  - <its chain-head verdict, and an explicit prompt if anything is uncommitted>
+
 Open / ambiguous (carry to next session):
   - <thing>
   - [audit] <any path / import / index / coverage issues from Step 7>
 ```
+
+The **Git state** block is what keeps commit discipline attached to memory discipline. `/sync-mem`
+is usually invoked at exactly the moment a commit is due — work reached a stable point — so showing
+the state here turns "I should commit" from something the user has to remember into something the
+report puts in front of them. Keep it to two lines; it is a nudge, not a git tutorial. If the tree
+is clean and the chain head committed, say so in one line and move on.
 
 The "open" section is what makes the next session pick up cleanly — list anything the user wanted to save but couldn't decide on, plus anything you noticed but didn't have authority to persist, plus any audit issues from Step 7. Items in this section should also appear in the session-log carry-over (Step 8; or `for_next_session.md` in the fallback); the report is the conversation-level surfacing, the log/file is the durable carry-over.
 
