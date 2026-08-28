@@ -39,7 +39,29 @@ Four components get installed:
 Run these steps. Everything is idempotent — check-before-write at each step.
 
 ### Step 0 — Idempotency check
-Resolve `PROJECT` = current working directory. If `session_logs/` already exists with at least one `session_*.md`, the chain is set up: **don't re-scaffold**. Instead verify the hook + protocol are present (Steps 6–9) and report. Stop unless something's missing.
+Resolve `PROJECT` = current working directory, then classify which of **three** states it is in. Say which one you found when you report — the state is the useful part of the answer, not an aside.
+
+| State | How to tell | What to do |
+|---|---|---|
+| **Fresh** | no `.claude/hooks/inject_session_log.sh`, no `session_logs/` | Run the whole procedure, Steps 1–10. |
+| **Installer-prepared** | hooks + `settings.json` registrations present, but `session_logs/` missing or empty | Run **Steps 1–5 and 8 only** — the chain and the protocol. Steps 6–7 are already done: verify them, don't redo them. |
+| **Already set up** | `session_logs/` holds at least one `session_*.md` | **Don't re-scaffold.** Verify the hook + protocol (Steps 6–9) and report. Stop unless something is missing. |
+
+> **★ "Installer-prepared" is the expected result of `install.sh`, not a broken install — say so.**
+> `install.sh` deliberately does the mechanical half (memory inversion, hook symlinks,
+> `settings.json`, `.gitignore`) and stops, because the first log needs today's date, the session
+> UUID, and a real summary of the session — agent work a shell script cannot do. Finishing that half
+> is exactly what this skill is being invoked for.
+>
+> So **do not report it as a "partial install", a problem, or something you repaired.** That wording
+> has been observed in the wild and reads as a diagnosis of breakage when nothing is wrong; it
+> makes a user go looking for a fault that does not exist. Report it as the handoff completing —
+> name what the installer had already done, and what you added. Reserve repair language for a state
+> that genuinely is inconsistent (for example hooks registered in `settings.json` but the scripts
+> missing from `.claude/hooks/`, which is a real fault worth flagging).
+>
+> Distinguish the two by *evidence*, not assumption: an installer-prepared project has the hook
+> symlinks and the `settings.json` entries but no `session_*.md`. Check both before concluding.
 
 ### Step 1 — Resolve the memory dir (`MEM`)
 Find the directory that holds `MEMORY.md`:
@@ -287,7 +309,10 @@ Pipe-test the installed hook and confirm valid JSON with content:
 `echo '{}' | PROJECT/.claude/hooks/inject_session_log.sh | python3 -m json.tool` — expect `hookSpecificOutput.additionalContext` containing the first log. On a fresh install this log is brand new, so the staleness check should stay silent (no `⚠` line); it only fires once the working tree moves ahead of the head's date.
 
 ### Step 10 — Report
-Tell the user what was created. Note: the `SessionStart` hook only fires when a session *begins*, so it takes effect on the **next** session start (can't be tested in-turn). Point them at `/hooks` to confirm registration or disable it. Do **not** add a "read the session log" reminder to CLAUDE.md — the hook makes it deterministic.
+Open by naming the Step 0 state you found, then say what was created. For an **installer-prepared**
+project that means: what `install.sh` had already put in place, and what you added on top — framed
+as the handoff finishing, never as a partial or repaired install. For a **fresh** project, just
+report what was created. Note: the `SessionStart` hook only fires when a session *begins*, so it takes effect on the **next** session start (can't be tested in-turn). Point them at `/hooks` to confirm registration or disable it. Do **not** add a "read the session log" reminder to CLAUDE.md — the hook makes it deterministic.
 
 ## Notes
 - Do not switch the hook to `jq` — many environments lack it; the bundled script uses `python3`.
