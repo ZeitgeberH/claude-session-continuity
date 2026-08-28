@@ -41,34 +41,81 @@ Persists a session's durable findings — corrections, decisions, project state 
 the session-log chain, at natural checkpoints. Covers general memory plus any project-specific
 extension declared in `.claude/sync-mem-project.md`.
 
-## Installing in another project
+## Instruction for installation
 
-### One command: `install.sh`
+Clone this repo once, then pick the mode that matches your situation:
 
 ```sh
 git clone https://github.com/ZeitgeberH/agentSkills_mem
-
-./agentSkills_mem/install.sh ~/existing-project          # add to a project you already have
-./agentSkills_mem/install.sh --create ~/new-project      # or start one from nothing
 ```
 
-The target needs to **exist already**, unless you pass `--create`. It does *not* need a `.claude/`
-directory — that gets created either way. `--create` makes the directory, runs `git init`, installs,
-and then makes the initial commit, so you end up with a repo whose HEAD the first session log can
-anchor to (the `commit:` field, below).
+### New project — starting from nothing
 
-`--create` is a flag rather than automatic because silently creating a mistyped path would install
-into the wrong place and look like it worked; without it a missing directory is an error that tells
-you about the flag. It also refuses when the *parent* doesn't exist — it makes a project, not a
-whole path. And it is the only mode that commits: in a repo you already had, the tree may hold
-unrelated in-flight work, and sweeping that into a commit nobody asked for is exactly the surprise
-this tool refuses to spring.
+```sh
+./agentSkills_mem/install.sh --create ~/new-project
+```
 
-Copies both skills, symlinks the hooks, merges `settings.json` (preserving existing keys), seeds
-`.gitignore`, and relocates the project's memory dir into the project (below). Re-runnable, and
-`--dry-run` shows the plan without touching anything. It deliberately stops short of scaffolding the
-chain — the first log needs today's date, the session UUID, and a real summary, which is agent work
-— so finish with `/setup-session-log`.
+Takes a bare path and leaves you a committed git repository with the skills installed, the hooks
+registered, and the memory dir already inverted. It makes the directory, runs `git init`, installs,
+then makes the initial commit — so the first session log has a real HEAD to anchor its `commit:`
+field to instead of `null`.
+
+This mode handles `git init` for you, which matters more than it looks:
+
+- **The staleness check gets its good mode.** The `SessionStart` hook warns when work happened
+  without a session log being written for it, and it has two implementations: `git` mode asks
+  `git status --porcelain` (precise, instant), while `mtime` mode walks the tree with `find` and
+  needs a hand-tuned `.claude/hooks/staleness-prune.txt` on any project with data or vendor
+  directories.
+- **The chain becomes auditable.** Each log's "Done this session" sits next to real commits, which
+  is the property the prev/next design exists to give you.
+
+Two deliberate limits:
+
+- **`--create` is a flag, not automatic.** Silently creating a mistyped path would install into the
+  wrong directory and report success. Without the flag a missing directory is an error that names
+  the flag. It also refuses when the *parent* doesn't exist — it scaffolds a project, not a whole
+  path.
+- **It is the only mode that commits**, because it is the only mode where the repo contains nothing
+  but what the installer just put there. If the commit fails (no `user.name` / `user.email`) it says
+  so rather than continuing silently.
+
+### Existing project — adding to work you already have
+
+```sh
+./agentSkills_mem/install.sh ~/existing-project
+```
+
+The directory must already exist. It does **not** need a `.claude/` directory — that gets created.
+`settings.json` is merged, not overwritten: existing keys (`permissions`, `mcpServers`, other hooks)
+are preserved, and re-running adds nothing twice.
+
+**This mode never commits.** Your tree may hold unrelated in-flight work, and sweeping that into a
+commit nobody asked for is exactly the surprise this tool refuses to spring — the same rule
+`/sync-mem` follows when it reports git state but won't act on it. Commit the install yourself,
+alongside whatever else is in flight.
+
+This is the common case: the payoff here is long-horizon work, and long-horizon work usually already
+has a repo. (It's also why this repo isn't a GitHub template — a template serves only brand-new
+projects, hands the clone this repo's README and identity, and leaves no path for upstream fixes to
+arrive.)
+
+**If it isn't a git repository yet,** run `git init` and commit soon after — between `init` and the
+first commit every file is untracked, which needlessly widens the staleness check's candidate set.
+Initializing later is not fatal: the hook probes for a repo at runtime every session and upgrades
+itself. Commit the chain (`session_logs/`) — it's the shareable layer — and gitignore
+`.claude-transcripts/` and `.claude/memory/store/`, which carry machine-specific paths and, in the
+transcripts' case, the full verbatim conversation.
+
+### What both modes do
+
+Copy both skills, symlink the hooks into `.claude/hooks/`, merge `settings.json`, seed `.gitignore`,
+and relocate the project's memory dir into the project (below). Both are re-runnable, and
+`--dry-run` prints the plan without touching anything.
+
+Neither scaffolds the chain itself: the first log needs today's date, the session UUID, and a real
+summary of the session, which is agent work. `/setup-session-log` finishes that, and is idempotent —
+it picks up from whatever the installer left.
 
 > **⚠ What it writes outside the target project — read before running.**
 > By default the installer also does this, and it is the *only* thing it touches outside `TARGET`:
@@ -103,7 +150,7 @@ when their files appear on disk. So finish the install like this, exactly as `in
 exit:
 
 ```
-./install.sh ~/proj      # skills copied, hooks symlinked + registered, memory inverted
+./install.sh [--create] ~/proj   # skills copied, hooks symlinked + registered, memory inverted
         ↓
 RESTART the session      # the skills become invocable here
         ↓
@@ -121,30 +168,6 @@ rule showing up, not a broken install.
 
 If you genuinely must set up inside one session, read each `SKILL.md` and follow its procedure by
 hand, and treat the next session start as the real acceptance test.
-
-This works on an **existing** project, which is the common case: the payoff here is long-horizon
-work, and long-horizon work usually already has a repo. (That's also why this repo isn't a GitHub
-template — a template only serves brand-new projects, gives the clone this repo's README and
-identity, and leaves no path for upstream fixes to arrive.)
-
-### `git init` first
-
-Initialize the repository **before** scaffolding the chain. Two concrete payoffs:
-
-- **The staleness check gets its good mode.** The `SessionStart` hook warns when work happened
-  without a session log being written for it, and it has two implementations: `git` mode asks
-  `git status --porcelain` (precise, instant), while `mtime` mode walks the tree with `find` and
-  needs a hand-tuned `.claude/hooks/staleness-prune.txt` on any project with data or vendor
-  directories. Not fatal to init later — the hook probes for a repo at runtime every session and
-  upgrades itself — but you get the cheap mode from day one. If you do init later, commit soon
-  after: between `init` and the first commit every file is untracked, which needlessly widens
-  git mode's candidate set.
-- **The chain becomes auditable.** Each log's "Done this session" sits next to real commits, which
-  is the property the prev/next design exists to give you.
-
-Commit the chain (`session_logs/`) — it's the shareable layer. Gitignore
-`.claude-transcripts/` and `.claude/memory/store/`: both carry machine-specific paths, and
-transcripts are the full verbatim conversation with no rotation.
 
 ### Running in a container? The memory-dir inversion is not optional
 
