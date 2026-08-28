@@ -97,13 +97,18 @@ background before getting on with what you actually came to do.
 
 #### What it asks
 
-Two questions. Press Enter twice to take the defaults — memory in the project folder, transcripts
-kept forever. Both are explained under [Two questions it asks](#two-questions-it-asks).
+Three questions. Press Enter through them to take the defaults — memory in the project folder,
+transcripts copied in and kept forever. Both are explained under [What it asks you](#what-it-asks-you).
 
 ```
   Where should this project's memory live?
     1) In the project folder   — travels with the project, survives a rebuild
     2) In Claude's home folder — leave it where Claude puts it
+  Choice [1]:
+
+  Keep a copy of session transcripts in the project?
+    1) Yes, copy them into the project
+    2) No, leave them in Claude's home folder only
   Choice [1]:
 
   Delete old session transcripts?
@@ -227,22 +232,27 @@ and relocate the project's memory dir into the project (below). Both are re-runn
 | `--dry-run` | Print the plan and write nothing |
 | `--no-invert-memory` | Leave the memory store in Claude's home folder |
 | `--invert-memory` | Move it into the project — the default; accepted for explicitness |
+| `--no-transcripts` | Don't copy session transcripts into the project |
+| `--transcripts` | Copy them — the default; accepted for explicitness |
 | `--retention-days N` | Delete mirrored transcripts older than N days (`0` = keep forever, the default) |
 | `-y`, `--yes` | Take every default; ask nothing, even on a terminal |
 | `-h`, `--help` | Print usage and exit |
 
 Any flag settles its question and suppresses the matching prompt.
 
-#### Two questions it asks
+#### What it asks you
 
-On a terminal the installer asks about the two choices that are genuinely yours. Piped or redirected
-— CI, a script — it asks nothing and takes the defaults, so it never blocks an unattended run. Any
-flag you pass settles that question and suppresses its prompt; `-y` takes every default silently.
+On a terminal the installer asks about the choices that are genuinely yours. Piped or redirected — CI,
+a script — it asks nothing and takes the defaults, so it never blocks an unattended run. Any flag you
+pass settles that question and suppresses its prompt; `-y` takes every default silently.
 
 | Question | Default | Flag |
 |---|---|---|
 | Where should this project's memory live — the project folder, or Claude's home folder? | **project folder** | `--no-invert-memory` |
-| Delete session transcripts older than N days? | **keep forever** | `--retention-days N` |
+| Keep a copy of session transcripts in the project? | **yes** | `--no-transcripts` |
+| Delete transcripts older than N days? | **keep forever** | `--retention-days N` |
+
+The third question is skipped if you decline the second — there is nothing to prune.
 
 **Memory location.** Between sessions Claude keeps notes about a project — decisions, context, what
 it learned. By default that store lives in Claude's own home folder (`~/.claude`), away from your
@@ -333,6 +343,9 @@ while every pointer in them died.
 > keeps it out of the repo — but *not* out of a zip, a backup, a container image built from the
 > workspace, or a directory someone browses. On a work machine or a shared repo, decide whether you
 > want that before installing, not after.
+
+**Opt out of the mirror entirely with `--no-transcripts`**, or at the second prompt. Nothing else
+depends on it; you lose only the ability to drill from a session log into its raw transcript.
 
 **Retention is off by default** — nothing deletes them, and the `Stop` hook refreshes after every
 assistant turn, so the directory only grows. Pass **`--retention-days N`** at install time to wire a

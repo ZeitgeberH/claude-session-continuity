@@ -63,13 +63,32 @@ Resolve `PROJECT` = current working directory, then classify which of **three** 
 > Distinguish the two by *evidence*, not assumption: an installer-prepared project has the hook
 > symlinks and the `settings.json` entries but no `session_*.md`. Check both before concluding.
 
-### Step 1 — Resolve the memory dir (`MEM`)
-Find the directory that holds `MEMORY.md`:
-- If `PROJECT/.claude-memory/MEMORY.md` exists → `MEM = PROJECT/.claude-memory`.
-- Else if `PROJECT/.claude/memory/MEMORY.md` exists → `MEM = PROJECT/.claude/memory`.
-- Else find the auto-memory dir (the harness names it in the environment, typically `~/.claude/projects/<sanitized-cwd>/memory/`) and make it reachable from the project root — see the box below for **which direction to link**. **This includes the case where no memory exists yet:** create `PROJECT/.claude/memory/store/` with an empty `MEMORY.md` and invert the link now. Deferring it is a false economy — see *Invert up front* below.
+### Step 1 — Resolve two locations: the chain, and the memory dir
+These are different things and must not be conflated. One is fixed; the other is the user's choice.
 
-The hook resolves `PROJECT/.claude-memory/session_logs` (or `.claude/memory/session_logs`) at runtime, so `MEM` must be reachable under one of those.
+**`CHAIN` is always inside the project** — `PROJECT/.claude/memory/session_logs/` (or
+`PROJECT/.claude-memory/session_logs/` if that layout already exists). The `SessionStart` hook probes
+**only those two paths**, so a chain written anywhere else is invisible no matter how correct it
+looks. This holds regardless of where memory lives.
+
+**`MEM` is wherever `MEMORY.md` lives**, and may legitimately sit *outside* the project:
+- `PROJECT/.claude-memory/MEMORY.md` exists → `MEM = PROJECT/.claude-memory`.
+- `PROJECT/.claude/memory/store/MEMORY.md` (or `.../memory/MEMORY.md`) exists → that directory.
+- Otherwise → the harness auto-memory dir (typically `~/.claude/projects/<sanitized-cwd>/memory/`),
+  **used as it is**. If it doesn't exist yet, create it.
+
+> **★ Never relocate the memory dir as a side effect of this skill.** If the harness memory dir is
+> not already a symlink into the project, that is a decision, not an oversight: `install.sh` asks
+> where memory should live and `--no-invert-memory` declines the move. Inverting it here because this
+> skill prefers a layout would silently override an answer the user was explicitly asked for, and
+> would move their memory without them asking — the same class of surprise as committing someone's
+> in-flight work.
+>
+> So: use whatever `MEM` resolves to and put the chain in the project either way. If relocating looks
+> worthwhile, *say so* and point at `install.sh --invert-memory`; don't do it unasked.
+>
+> When it *has* been inverted, the box below explains why the link runs harness → project and never
+> the reverse — worth knowing when verifying an existing install.
 
 > **★ A symlink existing is not proof the memory dir works — resolve it.** If the harness memory dir
 > is already a symlink, test that it *resolves* (`[ -f "$auto/MEMORY.md" ]`), not merely that it is a
@@ -121,7 +140,7 @@ The hook resolves `PROJECT/.claude-memory/session_logs` (or `.claude/memory/sess
 > container" as the special case that merely *tolerates* skipping it, not the default.
 
 ### Step 2 — Create the chain directory
-`mkdir -p MEM/session_logs`.
+`mkdir -p CHAIN` — that is `PROJECT/.claude/memory/session_logs/`, from Step 1. **Not** `MEM/session_logs`: when memory lives in the harness directory those are different paths, and only the project one is visible to the hook.
 
 > **Frontmatter-normalizer caution.** Some harnesses run an auto-memory frontmatter normalizer that
 > rewrites *any* file inside the memory dir to the memory schema — nesting fields under `metadata:`,

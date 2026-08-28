@@ -13,6 +13,7 @@
 #   ./install.sh --dry-run ~/proj         show what would change, touch nothing
 #   ./install.sh --create ~/new-proj      scaffold the project first, then install
 #   ./install.sh --no-invert-memory ~/proj
+#   ./install.sh --no-transcripts ~/proj      skip the transcript mirror
 #   ./install.sh --retention-days 30 ~/proj   rotate mirrored transcripts
 #   ./install.sh -y ~/proj                    take every default, ask nothing
 #
@@ -41,6 +42,7 @@ set -euo pipefail
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DRY=0; INVERT=1; CREATE=0; TARGET=""; ASSUME_YES=0
 INVERT_SET=0; RETENTION_DAYS=0; RETENTION_SET=0   # 0 days = keep forever (default)
+MIRROR=1; MIRROR_SET=0                            # copy transcripts into the project (default)
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run)          DRY=1 ;;
@@ -48,6 +50,8 @@ while [ $# -gt 0 ]; do
     -y|--yes)           ASSUME_YES=1 ;;
     --no-invert-memory) INVERT=0; INVERT_SET=1 ;;
     --invert-memory)    INVERT=1; INVERT_SET=1 ;;
+    --no-transcripts)   MIRROR=0; MIRROR_SET=1 ;;
+    --transcripts)      MIRROR=1; MIRROR_SET=1 ;;
     --retention-days)   shift; RETENTION_DAYS="${1:-0}"; RETENTION_SET=1
                         case "$RETENTION_DAYS" in ''|*[!0-9]*)
                           echo "--retention-days needs a whole number (0 = keep forever)" >&2; exit 2 ;;
@@ -113,7 +117,29 @@ ASK
     case "$ans" in 2) INVERT=0 ;; *) INVERT=1 ;; esac
   fi
 
-  if [ "$RETENTION_SET" != 1 ]; then
+  if [ "$MIRROR_SET" != 1 ]; then
+    cat <<'ASK'
+
+  Keep a copy of session transcripts in the project?
+
+  Claude Code stores a full transcript of every session under its own home folder,
+  which is not durable — a container rebuild or a cleanup takes it, and each
+  session log's pointer to its transcript dies with it. Copying them into the
+  project keeps that record for as long as the project exists.
+
+  They are the complete verbatim conversation, including anything you paste. The
+  copy is gitignored, but that does not keep it out of a zip, a backup, or an
+  image built from this directory.
+
+    1) Yes, copy them into the project — durable, and drillable from each log
+    2) No, leave them in Claude's home folder only
+
+ASK
+    printf '  Choice [1]: '; read -r ans || ans=""
+    case "$ans" in 2) MIRROR=0 ;; *) MIRROR=1 ;; esac
+  fi
+
+  if [ "$MIRROR" = 1 ] && [ "$RETENTION_SET" != 1 ]; then
     cat <<'ASK'
 
   Delete old session transcripts?
@@ -166,7 +192,9 @@ done
 
 # --- hooks: symlinks, not copies (see SKILL.md Step 6) -----------------------
 run mkdir -p "$TARGET/.claude/hooks"
-for h in inject_session_log.sh save_transcripts.sh; do
+hooks_wanted="inject_session_log.sh"
+[ "$MIRROR" = 1 ] && hooks_wanted="$hooks_wanted save_transcripts.sh"
+for h in $hooks_wanted; do
   if [ "$DRY" = 1 ]; then say "would: link .claude/hooks/$h -> ../skills/setup-session-log/$h"; continue; fi
   if [ -f "$TARGET/.claude/hooks/$h" ] && [ ! -L "$TARGET/.claude/hooks/$h" ]; then
     say "hook $h: real file present (deliberate fork?) — leaving it alone"
@@ -175,7 +203,11 @@ for h in inject_session_log.sh save_transcripts.sh; do
   ln -sfn "../skills/setup-session-log/$h" "$TARGET/.claude/hooks/$h"
   say "hook $h ✅ (symlink)"
 done
-if [ "$RETENTION_DAYS" -gt 0 ] 2>/dev/null; then
+if [ "$MIRROR" != 1 ]; then
+  say "transcripts: NOT copied into the project. They stay in Claude's home folder"
+  say "             only, so a rebuild or cleanup takes them and each session log's"
+  say "             transcript: pointer dies with them. Re-run with --transcripts."
+elif [ "$RETENTION_DAYS" -gt 0 ] 2>/dev/null; then
   if [ "$DRY" = 1 ]; then
     say "would: enable transcript rotation (${RETENTION_DAYS}d, keep newest 3)"
   else
@@ -201,7 +233,7 @@ run chmod +x "$TARGET/.claude/skills/setup-session-log/inject_session_log.sh" \
 if [ "$DRY" = 1 ]; then
   say "would: merge SessionStart/SessionEnd/Stop hooks into .claude/settings.json"
 else
-python3 - "$TARGET" "$RETENTION_DAYS" <<'PY'
+python3 - "$TARGET" "$RETENTION_DAYS" "$MIRROR" <<'PY'
 import json, pathlib, sys
 target = sys.argv[1]
 sp = pathlib.Path(target, ".claude/settings.json")
@@ -212,11 +244,12 @@ except json.JSONDecodeError:
 # Project-relative via the env var Claude Code exports to hooks. Never an absolute
 # path: settings.json is committed, and a baked-in path breaks every other checkout.
 B = "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks"
-reg = {"SessionStart": [(f"{B}/inject_session_log.sh", 10, "Loading session-log chain head...")],
-       "SessionEnd":   [(f"{B}/save_transcripts.sh",   15, "Mirroring transcripts...")],
-       "Stop":         [(f"{B}/save_transcripts.sh",   15, "Mirroring transcripts...")]}
-if int(sys.argv[2]) > 0:   # rotation requested — prune after the mirror, once per session
-    reg["SessionEnd"].append((f"{B}/prune_transcripts.sh", 10, "Pruning old transcripts..."))
+reg = {"SessionStart": [(f"{B}/inject_session_log.sh", 10, "Loading session-log chain head...")]}
+if sys.argv[3] == "1":     # transcript mirror wanted
+    reg["SessionEnd"] = [(f"{B}/save_transcripts.sh", 15, "Mirroring transcripts...")]
+    reg["Stop"]       = [(f"{B}/save_transcripts.sh", 15, "Mirroring transcripts...")]
+    if int(sys.argv[2]) > 0:   # rotation too — prune after the mirror, once per session
+        reg["SessionEnd"].append((f"{B}/prune_transcripts.sh", 10, "Pruning old transcripts..."))
 hooks, added = cfg.setdefault("hooks", {}), 0
 for event, entries in reg.items():
     matchers = hooks.setdefault(event, [])
@@ -237,10 +270,12 @@ fi
 if [ "$DRY" = 1 ]; then say "would: add .claude-transcripts/ and .claude/memory/store/ to .gitignore"
 else
   gi="$TARGET/.gitignore"; touch "$gi"
-  for e in ".claude-transcripts/" ".claude/memory/store/"; do
-    grep -qxF "$e" "$gi" || echo "$e" >> "$gi"
-  done
-  say "gitignore ✅ (transcripts + memory store; the chain stays tracked)"
+  ign=""
+  [ "$MIRROR" = 1 ] && ign="$ign .claude-transcripts/"
+  [ "$INVERT" = 1 ] && ign="$ign .claude/memory/store/"
+  for e in $ign; do grep -qxF "$e" "$gi" || echo "$e" >> "$gi"; done
+  if [ -n "$ign" ]; then say "gitignore ✅ ($(echo $ign); the chain stays tracked)"
+  else say "gitignore: nothing to ignore (chain stays tracked)"; fi
 fi
 
 # --- optional: invert the memory dir -----------------------------------------
