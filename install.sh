@@ -222,8 +222,19 @@ fi
 cat <<EOF
 
 Done. Next:
-  1. RESTART the session   — skills and hooks register at session start, not now.
-  2. /setup-session-log    — scaffolds the chain (idempotent; picks up from here).
-  3. RESTART again         — the SessionStart hook fires from here on.
+  1. Start Claude Code in the project:
+       cd $TARGET && claude
+     Skills and hooks are registered when a session STARTS, so they are picked up
+     by this one. If you ran this script from inside a session already open on
+     this project, restart that session instead.
+
+  2. Run /setup-session-log
+     Scaffolds the session-log chain. Idempotent — it picks up from what this
+     script already installed.
+
+  3. Start one more session
+     From here on the SessionStart hook injects the chain head automatically.
+     (The first session had no chain yet, so it had nothing to inject.)
+
 Then work normally and run /sync-mem at checkpoints.
 EOF

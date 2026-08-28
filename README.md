@@ -143,28 +143,34 @@ it picks up from whatever the installer left.
 > `/` replaced by `-`. If you later open the project by a *different* path — another mount point, a
 > symlinked route — Claude Code computes a different directory and will not see this memory.
 
-#### After it runs — two restarts, and why they aren't optional
+#### After it runs — the session boundary, and why it isn't optional
 
-The installer cannot do this part: **skills and hooks are registered when a session starts**, not
-when their files appear on disk. So finish the install like this, exactly as `install.sh` prints on
-exit:
+`install.sh` runs in a plain shell, before Claude Code is involved at all. The installer cannot do
+this part: **skills and hooks are registered when a session starts**, not when their files appear on
+disk. So finish the install like this, exactly as `install.sh` prints on exit:
 
 ```
 ./install.sh [--create] ~/proj   # skills copied, hooks symlinked + registered, memory inverted
         ↓
-RESTART the session      # the skills become invocable here
+cd ~/proj && claude              # skills are invocable in this session; hooks are live
         ↓
-/setup-session-log       # scaffolds the chain; idempotent, picks up from what install.sh left
+/setup-session-log               # scaffolds the chain; idempotent, picks up from the installer
         ↓
-RESTART the session      # the SessionStart hook fires from here on; chain head auto-injects
+start one more session           # from here the chain head is auto-injected at every start
         ↓
-…work…  →  /sync-mem     # appends the next log at each checkpoint
+…work…  →  /sync-mem             # appends the next log at each checkpoint
 ```
 
-Skipping the restarts corrupts nothing, but nothing you installed actually *runs*: the chain head is
-never injected and the transcript mirror never fires, so the install stays untested while looking
-complete. Invoking a just-copied skill in the same session fails with `Unknown skill` — that is this
-rule showing up, not a broken install.
+If you ran the installer from *inside* a session already open on that project, restart that session
+instead of starting one — same boundary, different starting point.
+
+Skipping that boundary corrupts nothing, but nothing you installed actually *runs*: invoking a
+just-copied skill in the same session fails with `Unknown skill` — that is this rule showing up, not
+a broken install.
+
+The third step earns its place for one specific reason: the first session starts *before* the chain
+exists, so the `SessionStart` hook fires, finds no `session_logs/`, and exits silently with nothing
+to inject. Only from the next session does the chain head actually reach the agent's context.
 
 If you genuinely must set up inside one session, read each `SKILL.md` and follow its procedure by
 hand, and treat the next session start as the real acceptance test.
