@@ -1,4 +1,8 @@
-# agentSkills_mem
+# claude-session-continuity
+
+> Cross-session continuity for Claude Code projects: an append-only chain of session logs, loaded
+> automatically at every session start, plus a skill that promotes what a session learned into
+> durable memory before it scrolls away.
 
 This design works for the same reason biological memory is shaped this way: no system with bounded
 attention — human or agent — can keep everything active at once, so it needs a small "working"
@@ -46,13 +50,13 @@ extension declared in `.claude/sync-mem-project.md`.
 Clone this repo once, then pick the mode that matches your situation:
 
 ```sh
-git clone https://github.com/ZeitgeberH/agentSkills_mem
+git clone https://github.com/ZeitgeberH/claude-session-continuity
 ```
 
 ### New project
 
 ```sh
-./agentSkills_mem/install.sh --create ~/new-project
+./claude-session-continuity/install.sh --create ~/new-project
 ```
 
 **That is the whole setup — you are ready to work.** Start Claude Code in the project and use it as
@@ -143,7 +147,7 @@ absence at this point is expected, not a failed install.
 ### Existing project
 
 ```sh
-./agentSkills_mem/install.sh ~/existing-project
+./claude-session-continuity/install.sh ~/existing-project
 ```
 
 That is the whole setup here too — you are ready to work. Your first session creates and commits the
