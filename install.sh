@@ -267,6 +267,23 @@ run chmod +x "$TARGET/.claude/skills/setup-session-log/inject_session_log.sh" \
               "$TARGET/.claude/skills/setup-session-log/nudge_sync.sh"
 [ -f "$SRC/.claude/skills/sync-mem/git_state.sh" ] && run chmod +x "$TARGET/.claude/skills/sync-mem/git_state.sh"
 
+# --- /sync-mem project extension: ship the template, so the point is visible ---
+# /sync-mem reads .claude/sync-mem-project.md when it exists. Without a shipped
+# stub the feature is discoverable only by reading a skill description, so nobody
+# writes one. The template lives with the skill that consumes it, not here.
+# Never overwrite: once filled in, this file is hand-authored content.
+TPL="$SRC/.claude/skills/sync-mem/project-extension.template.md"
+if [ -e "$TARGET/.claude/sync-mem-project.md" ]; then
+  say "sync-mem extension: present, left alone ✅"
+elif [ ! -f "$TPL" ]; then
+  say "sync-mem extension: template missing from source, skipping"
+elif [ "$DRY" = 1 ]; then
+  say "would: write .claude/sync-mem-project.md from the sync-mem template (inert stub)"
+else
+  cp "$TPL" "$TARGET/.claude/sync-mem-project.md"
+  say "sync-mem extension: stub written ✅ (.claude/sync-mem-project.md — inert until filled in)"
+fi
+
 # --- settings.json: merge, never clobber -------------------------------------
 if [ "$DRY" = 1 ]; then
   say "would: merge SessionStart/SessionEnd/Stop hooks into .claude/settings.json"

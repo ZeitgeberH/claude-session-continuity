@@ -58,6 +58,13 @@ Persists a session's durable findings — corrections, decisions, project state 
 the session-log chain, at natural checkpoints. Covers general memory plus any project-specific
 extension declared in `.claude/sync-mem-project.md`.
 
+The installer writes that extension as an **inert stub** — the extension point explained, plus three
+rules for keeping it from rotting and a commented-out example table. Nothing in it is active until
+you fill it in, and re-running never overwrites it. It exists because a documented-but-unscaffolded
+extension point is one nobody discovers: declare there the project files that go stale when a
+finding changes (a plan, a spec, a caption, a results write-up) and `/sync-mem` maintains them at
+the same checkpoint it saves memory.
+
 Before it reports, it audits what it just saved: that every path a memory entry cites still
 resolves, that nothing written is missing from the index, and that the git state is what you think
 it is — uncommitted work, unpushed commits, or a chain head that never got committed and so is
@@ -127,6 +134,7 @@ Each step as it happens, roughly this:
   hook inject_session_log.sh ✅ (symlink)
   hook save_transcripts.sh ✅ (symlink)
   transcripts: kept forever (no rotation).
+  sync-mem extension: stub written ✅ (.claude/sync-mem-project.md — inert until filled in)
   settings.json ✅ (3 hook(s) added, existing keys preserved)
   gitignore ✅ (transcripts + memory store; the chain stays tracked)
   memory: relocating this project's memory dir INTO the project.
@@ -150,6 +158,7 @@ and leaves it alone — the script is safe to re-run.
 │   │   └── save_transcripts.sh
 │   ├── memory/store/MEMORY.md    ← the real memory files now live here
 │   ├── settings.json             ← the three hooks, registered
+│   ├── sync-mem-project.md      ← inert /sync-mem extension stub; fill in or delete
 │   └── skills/
 │       ├── setup-session-log/
 │       └── sync-mem/
