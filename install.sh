@@ -11,7 +11,15 @@
 #
 #   ./install.sh [TARGET_PROJECT]         (default: current directory)
 #   ./install.sh --dry-run ~/proj         show what would change, touch nothing
+#   ./install.sh --create ~/new-proj      scaffold the project first, then install
 #   ./install.sh --no-invert-memory ~/proj
+#
+# TARGET must already exist unless --create is given. It does NOT need a .claude/
+# directory — that gets created. --create makes the directory, runs `git init`, and
+# makes the initial commit once everything is in place, leaving a repo whose HEAD
+# the first session log can point at. It is an explicit flag on purpose: silently
+# creating a mistyped path would install into the wrong place and look like it
+# worked.
 #
 # BY DEFAULT this also relocates the project's memory dir into the project:
 #   ~/.claude/projects/<sanitized-target>/memory  becomes a symlink pointing at
@@ -24,10 +32,11 @@
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DRY=0; INVERT=1; TARGET=""
+DRY=0; INVERT=1; CREATE=0; TARGET=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run)          DRY=1 ;;
+    --create)           CREATE=1 ;;
     --no-invert-memory) INVERT=0 ;;
     --invert-memory)    INVERT=1 ;;   # now the default; accepted for compatibility
     -h|--help)       # print the whole header block, however long it grows
@@ -42,8 +51,25 @@ TARGET="${TARGET:-$PWD}"
 say()  { printf '  %s\n' "$*"; }
 run()  { if [ "$DRY" = 1 ]; then say "would: $*"; else "$@"; fi; }
 
-[ -d "$TARGET" ] || { echo "not a directory: $TARGET" >&2; exit 1; }
-TARGET="$(cd "$TARGET" && pwd)"
+if [ ! -d "$TARGET" ]; then
+  if [ "$CREATE" != 1 ]; then
+    echo "no such directory: $TARGET" >&2
+    echo "  (pass --create to scaffold it: mkdir + git init + initial commit)" >&2
+    exit 1
+  fi
+  parent="$(dirname "$TARGET")"
+  [ -d "$parent" ] || { echo "parent directory does not exist: $parent" >&2
+                        echo "  --create makes the project, not the whole path." >&2; exit 1; }
+  if [ "$DRY" = 1 ]; then
+    echo "would: create project directory $TARGET"
+    TARGET="$parent/$(basename "$TARGET")"
+  else
+    mkdir -p "$TARGET"; TARGET="$(cd "$TARGET" && pwd)"
+    echo "  created project directory ✅"
+  fi
+else
+  TARGET="$(cd "$TARGET" && pwd)"
+fi
 [ "$TARGET" = "$SRC" ] && { echo "refusing to install into the skills repo itself" >&2; exit 1; }
 for s in setup-session-log sync-mem; do
   [ -d "$SRC/.claude/skills/$s" ] || { echo "missing source skill: $s" >&2; exit 1; }
@@ -53,10 +79,18 @@ command -v python3 >/dev/null || { echo "python3 required (settings.json merge)"
 echo "Installing into $TARGET"; [ "$DRY" = 1 ] && echo "(dry run — nothing will be written)"
 
 # --- git ---------------------------------------------------------------------
+if [ "$CREATE" = 1 ] && ! git -C "$TARGET" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if [ "$DRY" = 1 ]; then say "would: git init"
+  else git -C "$TARGET" init -q && say "git: initialized ✅"; fi
+fi
 if git -C "$TARGET" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  git -C "$TARGET" rev-parse HEAD >/dev/null 2>&1 \
-    && say "git: repo present ✅" \
-    || say "git: repo has no commits yet — commit before the first session log."
+  if git -C "$TARGET" rev-parse HEAD >/dev/null 2>&1; then
+    say "git: repo present ✅"
+  elif [ "$CREATE" = 1 ]; then
+    :   # --create makes the initial commit at the end; don't warn about it here
+  else
+    say "git: repo has no commits yet — commit before the first session log."
+  fi
 else
   say "git: NOT a repository. Run 'git init' before /setup-session-log —"
   say "     it gives the staleness check its cheap mode and makes the chain"
@@ -165,6 +199,24 @@ else
   say "        ~/.claude/. In a container that is the ephemeral half, so it will"
   say "        not survive a rebuild; inverting later means migrating files and"
   say "        rewriting their relative links. See README."
+fi
+
+# --- initial commit (only for a repo this run created) ------------------------
+# Never commits in an existing repo: that tree can hold unrelated in-flight work,
+# and sweeping it into a commit nobody asked for is the surprise we refuse to make.
+# A repo we just initialized contains nothing but what this script put there.
+if [ "$CREATE" = 1 ] && [ "$DRY" != 1 ] \
+   && git -C "$TARGET" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+   && ! git -C "$TARGET" rev-parse HEAD >/dev/null 2>&1; then
+  git -C "$TARGET" add -A
+  if git -C "$TARGET" -c commit.gpgsign=false commit -q \
+       -m "Initial commit: session-log + memory continuity system" 2>/dev/null; then
+    say "git: initial commit ✅ ($(git -C "$TARGET" rev-parse --short HEAD)) — the first"
+    say "     session log now has a revision to anchor to."
+  else
+    say "git: initial commit skipped (is user.name/user.email set?). Commit by hand"
+    say "     before the first session log."
+  fi
 fi
 
 cat <<EOF

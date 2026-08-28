@@ -47,8 +47,22 @@ extension declared in `.claude/sync-mem-project.md`.
 
 ```sh
 git clone https://github.com/ZeitgeberH/agentSkills_mem
-./agentSkills_mem/install.sh ~/path/to/your-project
+
+./agentSkills_mem/install.sh ~/existing-project          # add to a project you already have
+./agentSkills_mem/install.sh --create ~/new-project      # or start one from nothing
 ```
+
+The target needs to **exist already**, unless you pass `--create`. It does *not* need a `.claude/`
+directory — that gets created either way. `--create` makes the directory, runs `git init`, installs,
+and then makes the initial commit, so you end up with a repo whose HEAD the first session log can
+anchor to (the `commit:` field, below).
+
+`--create` is a flag rather than automatic because silently creating a mistyped path would install
+into the wrong place and look like it worked; without it a missing directory is an error that tells
+you about the flag. It also refuses when the *parent* doesn't exist — it makes a project, not a
+whole path. And it is the only mode that commits: in a repo you already had, the tree may hold
+unrelated in-flight work, and sweeping that into a commit nobody asked for is exactly the surprise
+this tool refuses to spring.
 
 Copies both skills, symlinks the hooks, merges `settings.json` (preserving existing keys), seeds
 `.gitignore`, and relocates the project's memory dir into the project (below). Re-runnable, and
