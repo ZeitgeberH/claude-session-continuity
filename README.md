@@ -235,6 +235,8 @@ and relocate the project's memory dir into the project (below). Both are re-runn
 | `--no-transcripts` | Don't copy session transcripts into the project |
 | `--transcripts` | Copy them — the default; accepted for explicitness |
 | `--retention-days N` | Delete mirrored transcripts older than N days (`0` = keep forever, the default) |
+| `--nudge-turns N` | Also remind to `/sync-mem` every N turns (`0` = only before compaction) |
+| `--no-sync-nudge` | No sync reminders at all |
 | `-y`, `--yes` | Take every default; ask nothing, even on a terminal |
 | `-h`, `--help` | Print usage and exit |
 
@@ -358,6 +360,27 @@ deletion code is installed at all.
 the ability to drill from a session log into its raw transcript.
 
 ### From here on
+
+#### Reminders to save
+
+`/sync-mem` is invoked, not automatic — so the obvious failure is forgetting, and losing a session's
+findings to a compaction. A `PreCompact` hook covers that: just before context is compacted, it tells
+Claude that detail is about to be summarised away and to sync first. That is the moment the loss
+actually happens, and it fires only then.
+
+There is deliberately no "remind me at 40% context" option: **no Claude Code hook receives
+context-window usage or token counts**, so any such threshold would be guesswork dressed as a
+measurement. Compaction is the real signal.
+
+`--nudge-turns N` adds a periodic reminder every N turns as a backstop. It is off by default and
+worth keeping high (20–30) — a turn count cannot tell a natural checkpoint from the middle of a
+debugging chain, and a sync forced with nothing durable to save is just churn. The counter resets
+whenever the chain head is actually written, so a session that syncs on its own is never nagged.
+
+Neither reminder blocks: they add context asking Claude to sync, and say not to interrupt what you
+asked for in order to do it. Turn both off with `--no-sync-nudge`.
+
+#### Working
 
 Work normally. Run **`/sync-mem`** at checkpoints — when something is worth keeping, or before you
 step away — and it appends a log for the session and saves what is durable to memory. From your

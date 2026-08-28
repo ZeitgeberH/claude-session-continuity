@@ -14,6 +14,8 @@
 #   ./install.sh --create ~/new-proj      scaffold the project first, then install
 #   ./install.sh --no-invert-memory ~/proj
 #   ./install.sh --no-transcripts ~/proj      skip the transcript mirror
+#   ./install.sh --nudge-turns 25 ~/proj      also remind every 25 turns
+#   ./install.sh --no-sync-nudge ~/proj       no sync reminders at all
 #   ./install.sh --retention-days 30 ~/proj   rotate mirrored transcripts
 #   ./install.sh -y ~/proj                    take every default, ask nothing
 #
@@ -43,6 +45,7 @@ SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DRY=0; INVERT=1; CREATE=0; TARGET=""; ASSUME_YES=0
 INVERT_SET=0; RETENTION_DAYS=0; RETENTION_SET=0   # 0 days = keep forever (default)
 MIRROR=1; MIRROR_SET=0                            # copy transcripts into the project (default)
+NUDGE=1; NUDGE_TURNS=0                            # remind before compaction; not on turn count
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run)          DRY=1 ;;
@@ -50,6 +53,12 @@ while [ $# -gt 0 ]; do
     -y|--yes)           ASSUME_YES=1 ;;
     --no-invert-memory) INVERT=0; INVERT_SET=1 ;;
     --invert-memory)    INVERT=1; INVERT_SET=1 ;;
+    --no-sync-nudge)    NUDGE=0 ;;
+    --sync-nudge)       NUDGE=1 ;;
+    --nudge-turns)      shift; NUDGE_TURNS="${1:-0}"; NUDGE=1
+                        case "$NUDGE_TURNS" in ''|*[!0-9]*)
+                          echo "--nudge-turns needs a whole number (0 = only before compaction)" >&2; exit 2 ;;
+                        esac ;;
     --no-transcripts)   MIRROR=0; MIRROR_SET=1 ;;
     --transcripts)      MIRROR=1; MIRROR_SET=1 ;;
     --retention-days)   shift; RETENTION_DAYS="${1:-0}"; RETENTION_SET=1
@@ -194,6 +203,7 @@ done
 run mkdir -p "$TARGET/.claude/hooks"
 hooks_wanted="inject_session_log.sh"
 [ "$MIRROR" = 1 ] && hooks_wanted="$hooks_wanted save_transcripts.sh"
+[ "$NUDGE"  = 1 ] && hooks_wanted="$hooks_wanted nudge_sync.sh"
 for h in $hooks_wanted; do
   if [ "$DRY" = 1 ]; then say "would: link .claude/hooks/$h -> ../skills/setup-session-log/$h"; continue; fi
   if [ -f "$TARGET/.claude/hooks/$h" ] && [ ! -L "$TARGET/.claude/hooks/$h" ]; then
@@ -224,16 +234,39 @@ else
   say "transcripts: kept forever (no rotation). Prune by hand, or re-run with"
   say "             --retention-days N. The folder holds full conversations."
 fi
+if [ "$NUDGE" = 1 ]; then
+  if [ "$DRY" = 1 ]; then
+    say "would: enable sync reminders (before compaction${NUDGE_TURNS:+, every ${NUDGE_TURNS} turns})"
+  else
+    cat > "$TARGET/.claude/hooks/sync-nudge.conf" <<CONF
+# When to remind the agent to run /sync-mem (read by nudge_sync.sh).
+# NUDGE_ON_COMPACT: remind just before context is compacted — the moment detail is lost.
+# NUDGE_EVERY_TURNS: also remind every N turns; 0 disables. A turn count cannot tell a
+# checkpoint from mid-task, so keep it high or leave it off.
+NUDGE_ON_COMPACT=1
+NUDGE_EVERY_TURNS=$NUDGE_TURNS
+CONF
+    if [ "$NUDGE_TURNS" -gt 0 ] 2>/dev/null; then
+      say "sync reminders: before compaction, and every ${NUDGE_TURNS} turns ✅"
+    else
+      say "sync reminders: before compaction only ✅ (--nudge-turns N adds a periodic one)"
+    fi
+  fi
+else
+  say "sync reminders: off. /sync-mem is then entirely manual — nothing will prompt"
+  say "                you before a compaction discards session detail."
+fi
 run chmod +x "$TARGET/.claude/skills/setup-session-log/inject_session_log.sh" \
               "$TARGET/.claude/skills/setup-session-log/save_transcripts.sh" \
-              "$TARGET/.claude/skills/setup-session-log/prune_transcripts.sh"
+              "$TARGET/.claude/skills/setup-session-log/prune_transcripts.sh" \
+              "$TARGET/.claude/skills/setup-session-log/nudge_sync.sh"
 [ -f "$SRC/.claude/skills/sync-mem/git_state.sh" ] && run chmod +x "$TARGET/.claude/skills/sync-mem/git_state.sh"
 
 # --- settings.json: merge, never clobber -------------------------------------
 if [ "$DRY" = 1 ]; then
   say "would: merge SessionStart/SessionEnd/Stop hooks into .claude/settings.json"
 else
-python3 - "$TARGET" "$RETENTION_DAYS" "$MIRROR" <<'PY'
+python3 - "$TARGET" "$RETENTION_DAYS" "$MIRROR" "$NUDGE" "$NUDGE_TURNS" <<'PY'
 import json, pathlib, sys
 target = sys.argv[1]
 sp = pathlib.Path(target, ".claude/settings.json")
@@ -250,6 +283,10 @@ if sys.argv[3] == "1":     # transcript mirror wanted
     reg["Stop"]       = [(f"{B}/save_transcripts.sh", 15, "Mirroring transcripts...")]
     if int(sys.argv[2]) > 0:   # rotation too — prune after the mirror, once per session
         reg["SessionEnd"].append((f"{B}/prune_transcripts.sh", 10, "Pruning old transcripts..."))
+if sys.argv[4] == "1":     # sync reminders
+    reg["PreCompact"] = [(f"{B}/nudge_sync.sh", 10, "Checking session-log state...")]
+    if int(sys.argv[5]) > 0:
+        reg.setdefault("Stop", []).append((f"{B}/nudge_sync.sh", 10, "Checking session-log state..."))
 hooks, added = cfg.setdefault("hooks", {}), 0
 for event, entries in reg.items():
     matchers = hooks.setdefault(event, [])
@@ -273,6 +310,7 @@ else
   ign=""
   [ "$MIRROR" = 1 ] && ign="$ign .claude-transcripts/"
   [ "$INVERT" = 1 ] && ign="$ign .claude/memory/store/"
+  [ "$NUDGE"  = 1 ] && ign="$ign .claude/hooks/.sync-nudge.state"
   for e in $ign; do grep -qxF "$e" "$gi" || echo "$e" >> "$gi"; done
   if [ -n "$ign" ]; then say "gitignore ✅ ($(echo $ign); the chain stays tracked)"
   else say "gitignore: nothing to ignore (chain stays tracked)"; fi
