@@ -307,9 +307,9 @@ Done. Next:
      by this one. If you ran this script from inside a session already open on
      this project, restart that session instead.
 
-  2. Run /setup-session-log
-     Scaffolds the session-log chain. Idempotent — it picks up from what this
-     script already installed.
+  2. Nothing to remember — that session starts with a notice telling Claude the
+     chain is missing, and it runs /setup-session-log for you. (Run it yourself
+     if you prefer; it is idempotent and picks up from what this script did.)
 
   3. Start one more session
      From here on the SessionStart hook injects the chain head automatically.

@@ -56,8 +56,10 @@ Three steps. The first is one shell command; the other two just need you to star
 | Step | What happens | Where you do it |
 |---|---|---|
 | **1** | Create the folder, install the skills, make the first commit | your shell |
-| **2** | Create the session-log chain — `/setup-session-log` | first Claude Code session |
+| **2** | Start Claude Code — it sets the chain up for you | first Claude Code session |
 | **3** | Start one more session — the chain head starts auto-injecting | second session |
+
+You do not have to remember Step 2 — starting the session is enough, and Claude is told what to do.
 
 Steps 2 and 3 are not busywork. Skills and hooks are registered when a session **starts**, so the
 installer in Step 1 cannot use them itself; and the session in Step 2 begins before the chain exists,
@@ -151,15 +153,15 @@ with big data folders. A repo also lets each log's "Done this session" sit next 
 
 #### Step 2: Initialize the session-log chain
 
-Start Claude Code in the project and run `/setup-session-log`:
+Just start Claude Code in the project:
 
 ```sh
 cd ~/new-project && claude
 ```
 
-```
-/setup-session-log
-```
+The `SessionStart` hook notices the chain is missing and tells Claude to create it, so Claude runs
+`/setup-session-log` and says so. You can also run `/setup-session-log` yourself if you prefer — it
+is the same thing. The notice appears only while there is no chain, so you see it once.
 
 It writes `session_logs/session_001_<today>.md` — the first entry in the chain — along with the
 memory index and the protocol file that later sessions follow. It is idempotent: it detects what

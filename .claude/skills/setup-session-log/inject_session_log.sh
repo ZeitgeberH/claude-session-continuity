@@ -11,10 +11,35 @@ logdir=""
 for cand in "$proj/.claude-memory/session_logs" "$proj/.claude/memory/session_logs"; do
   [ -d "$cand" ] && logdir="$cand" && break
 done
-[ -z "$logdir" ] && exit 0          # no chain in this project → inject nothing
+head=""
+[ -n "$logdir" ] && head=$(ls "$logdir"/session_*.md 2>/dev/null | sort | tail -1)
 
-head=$(ls "$logdir"/session_*.md 2>/dev/null | sort | tail -1)
-[ -z "$head" ] && exit 0            # dir exists but empty → nothing to inject
+# --- Bootstrap: installed, but the chain was never created -------------------
+# install.sh sets up the skills and hooks from a plain shell, where no session
+# exists — so it cannot write the first log (that needs a session id and a real
+# summary of a session that has not happened yet). Rather than leave the user to
+# remember a follow-up command, say so HERE, in the one place guaranteed to be
+# read at the moment it can be acted on. Fires only while no chain exists, so it
+# cannot nag.
+if [ -z "$head" ]; then
+  [ -f "$proj/.claude/skills/setup-session-log/SKILL.md" ] || exit 0   # not our project
+  bootstrap_msg=$(cat <<'MSG'
+=== SESSION-LOG SETUP INCOMPLETE (auto-injected at SessionStart) ===
+This project has the session-log system installed — skills present, hooks registered — but the
+log chain itself has not been created yet, so there is no previous-session summary to load.
+
+That is the expected state straight after install.sh: it runs in a plain shell where no session
+exists, so it cannot write the first log, which needs a session id and a summary of a session
+that has not happened.
+
+ACTION: run the /setup-session-log skill now. It is idempotent — it detects what the installer
+already did and fills in only what is missing. Tell the user you are doing it. Once the chain
+exists this notice is replaced by the previous session summary, and you will not see it again.
+MSG
+)
+  python3 -c 'import json,sys; print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": sys.argv[1]}}))' "$bootstrap_msg"
+  exit 0
+fi
 
 # --- Staleness check --------------------------------------------------------
 # The chain can go stale silently: work happens (files get touched) without a
