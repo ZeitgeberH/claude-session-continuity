@@ -308,12 +308,11 @@ Done. Next:
      this project, restart that session instead.
 
   2. Nothing to remember — that session starts with a notice telling Claude the
-     chain is missing, and it runs /setup-session-log for you. (Run it yourself
-     if you prefer; it is idempotent and picks up from what this script did.)
+     chain is missing, and it runs /setup-session-log for you, then commits it.
+     (Run it yourself if you prefer; it is idempotent.)
 
-  3. Start one more session
-     From here on the SessionStart hook injects the chain head automatically.
-     (The first session had no chain yet, so it had nothing to inject.)
+  Then just start working in that same session — no restart needed. From your
+  next session onward the previous session's summary loads automatically.
 
-Then work normally and run /sync-mem at checkpoints.
+Run /sync-mem at checkpoints to append the next log.
 EOF

@@ -51,20 +51,19 @@ git clone https://github.com/ZeitgeberH/agentSkills_mem
 
 ### New project
 
-Three steps. The first is one shell command; the other two just need you to start Claude Code.
+Two steps: one shell command, then start Claude Code.
 
 | Step | What happens | Where you do it |
 |---|---|---|
 | **1** | Create the folder, install the skills, make the first commit | your shell |
-| **2** | Start Claude Code — it sets the chain up for you | first Claude Code session |
-| **3** | Start one more session — the chain head starts auto-injecting | second session |
+| **2** | Start Claude Code — it creates the session-log chain and commits it | first Claude Code session |
 
 You do not have to remember Step 2 — starting the session is enough, and Claude is told what to do.
+There is no third step: **start working straight away.** From your next session onward, whenever that
+is, the previous session's summary loads automatically before you type anything.
 
-Steps 2 and 3 are not busywork. Skills and hooks are registered when a session **starts**, so the
-installer in Step 1 cannot use them itself; and the session in Step 2 begins before the chain exists,
-so there is nothing to inject until the one after it. From Step 3 onward it is automatic and you
-never think about this again.
+Step 2 is separate from Step 1 only because skills and hooks are registered when a session **starts**,
+so the installer cannot use them itself.
 
 #### Step 1: Initialize the project folder
 
@@ -168,19 +167,13 @@ memory index and the protocol file that later sessions follow. It is idempotent:
 Step 1 already installed and only fills in the rest, so it will report the hooks and settings as
 already in place. That is the expected handoff, not a problem.
 
-Commit what it wrote, alongside the work it describes.
+It also commits what it wrote, since on a project this new the only uncommitted files are the ones it
+just created. (If anything else is uncommitted it leaves the commit to you, rather than sweeping up
+work you had in flight.)
 
-#### Step 3: Start one more session
-
-```sh
-claude
-```
-
-From here on the chain head is injected into every session automatically — the previous session's
-summary and planned next steps are in context before you type anything. The Step 2 session started
-before the chain existed, which is why it took one more session to see this.
-
-Then just work. Run `/sync-mem` at checkpoints to append the next log.
+**Then just work.** You do not need to restart: this session already knows what it wrote. Run
+`/sync-mem` at checkpoints to append the next log, and from your next session onward the chain head
+loads at startup on its own.
 
 
 ### Existing project — adding to work you already have
@@ -189,8 +182,8 @@ Then just work. Run `/sync-mem` at checkpoints to append the next log.
 ./agentSkills_mem/install.sh ~/existing-project
 ```
 
-Then the same two session steps as a new project: start Claude Code and run `/setup-session-log`,
-then start one more session — see [After it runs](#after-it-runs--the-session-boundary-and-why-it-isnt-optional).
+Then the same as a new project: start Claude Code, and it creates the session-log chain for you —
+see [After it runs](#after-it-runs--the-session-boundary-and-why-it-isnt-optional).
 
 The directory must already exist. It does **not** need a `.claude/` directory — that gets created.
 `settings.json` is merged, not overwritten: existing keys (`permissions`, `mcpServers`, other hooks)
@@ -285,24 +278,21 @@ disk. So finish the install like this, exactly as `install.sh` prints on exit:
 ./install.sh [--create] ~/proj   # skills copied, hooks symlinked + registered, memory inverted
         ↓
 cd ~/proj && claude              # skills are invocable in this session; hooks are live
+        ↓                        # the hook says the chain is missing; Claude runs
+/setup-session-log               # …this, scaffolds the chain, and commits it
         ↓
-/setup-session-log               # scaffolds the chain; idempotent, picks up from the installer
-        ↓
-start one more session           # from here the chain head is auto-injected at every start
-        ↓
-…work…  →  /sync-mem             # appends the next log at each checkpoint
+…work…  →  /sync-mem             # carry straight on. /sync-mem appends the next log
 ```
 
-If you ran the installer from *inside* a session already open on that project, restart that session
-instead of starting one — same boundary, different starting point.
+There is exactly **one** boundary that matters, and it is between the installer and the session:
+skills and hooks are registered when a session **starts**, so a skill copied in mid-session is not
+invocable in that session — invoking it fails with `Unknown skill`. That is this rule showing up,
+not a broken install. If you ran the installer from *inside* a session already open on that project,
+restart that one; otherwise just start a session.
 
-Skipping that boundary corrupts nothing, but nothing you installed actually *runs*: invoking a
-just-copied skill in the same session fails with `Unknown skill` — that is this rule showing up, not
-a broken install.
-
-The third step earns its place for one specific reason: the first session starts *before* the chain
-exists, so the `SessionStart` hook fires, finds no `session_logs/`, and exits silently with nothing
-to inject. Only from the next session does the chain head actually reach the agent's context.
+**After the chain exists there is no further boundary.** Keep working in the same session — it wrote
+the chain, so it already knows what is in it. The `SessionStart` injection is for *later* sessions,
+which is where the value is anyway.
 
 If you genuinely must set up inside one session, read each `SKILL.md` and follow its procedure by
 hand, and treat the next session start as the real acceptance test.

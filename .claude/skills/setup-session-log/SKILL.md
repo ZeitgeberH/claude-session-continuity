@@ -315,16 +315,34 @@ At the end of a session (e.g. /sync-mem, or before stepping away):
 6. Refresh `for_next_session.md`'s pointer to the new head.
 7. **Commit the log with the work it describes.** The chain is tracked (unlike `store/` and
    `.claude-transcripts/`), so an uncommitted log is invisible to every clone and to the next
-   machine. `/sync-mem`'s audit reports this; it does not act on it — committing stays the user's
-   call.
+   machine. Commit it yourself **only if `git status --porcelain` lists nothing but the files you
+   just wrote** — then it can sweep up nothing unrelated. If anything else is uncommitted, report
+   and leave it: committing someone's in-flight work is not yours to do.
 
 NEVER overwrite a *previous* session's log — that is history. Your own session's log is not history yet; refining it is step 2 above. Pass today's date + session_id in explicitly.
 
 ```
 
-### Step 9 — Verify
+### Step 9 — Verify, then commit if the tree is otherwise clean
 Pipe-test the installed hook and confirm valid JSON with content:
 `echo '{}' | PROJECT/.claude/hooks/inject_session_log.sh | python3 -m json.tool` — expect `hookSpecificOutput.additionalContext` containing the first log. On a fresh install this log is brand new, so the staleness check should stay silent (no `⚠` line); it only fires once the working tree moves ahead of the head's date.
+
+**Then commit — but only if you can prove it sweeps up nothing else.** Compare `git status --porcelain` against the list of files you just wrote. Commit automatically **only when those two sets are equal**; otherwise stage nothing and tell the user what is uncommitted.
+
+> **★ Why that specific test, rather than "is this a new project".** The thing that makes an
+> automatic commit unsafe is not the age of the repo — it is unrelated work in the tree getting
+> swept into a commit nobody asked for. "The only changes are the files I just created" tests that
+> directly, needs no guessing about project age, and is exactly true in the case this usually runs
+> in: a project `install.sh --create` made moments ago, whose only uncommitted files are the chain
+> you just wrote. It also stays correct in an existing repo that happens to be clean, and correctly
+> refuses in one that is not.
+>
+> Message: `Add session-log chain (session_001)`. Report the short sha. If the commit fails — no
+> `user.name`/`user.email`, a hook rejecting it — say so and carry on; a missing commit is a
+> nuisance, a silent failure is a bug.
+>
+> This is not in tension with `/sync-mem` refusing to commit: the same rule, applied where the tree
+> is usually dirty, declines almost every time.
 
 ### Step 10 — Report
 Open by naming the Step 0 state you found, then say what was created. For an **installer-prepared**
