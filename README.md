@@ -65,6 +65,16 @@ invisible to every clone. It reports that state; it never commits or pushes on y
 
 ## Installation
 
+> ## ⚠️ Read this first
+>
+> **The installer moves your project's memory directory and leaves a symlink behind in `~/.claude/`.**
+> It is on by default, it is the only thing written outside the project you name, and it depends on a
+> path Claude Code does not document as stable.
+>
+> It is worth it — it is what keeps memory alive across a container rebuild — but understand it
+> before running: [what it changes, why, and how to undo it](#the-memory-relocation).
+> Skip it entirely with **`--no-invert-memory`**.
+
 Clone this repo once, then pick the mode that matches your situation:
 
 ```sh
@@ -249,8 +259,9 @@ Neither scaffolds the chain itself: the first log needs today's date, the sessio
 summary of the session, which is agent work. `/setup-session-log` finishes that, and is idempotent —
 it picks up from whatever the installer left.
 
-> **⚠ What it writes outside the target project — read before running.**
-> By default the installer also does this, and it is the *only* thing it touches outside `TARGET`:
+#### The memory relocation
+
+> By default the installer does this, and it is the *only* thing it touches outside `TARGET`:
 >
 > ```
 > ~/.claude/projects/<sanitized-target>/memory   ->   TARGET/.claude/memory/store/
@@ -271,9 +282,34 @@ it picks up from whatever the installer left.
 >
 > Skip it with **`--no-invert-memory`**.
 >
-> One caveat the installer also prints: the harness path above is derived from the target path with
-> `/` replaced by `-`. If you later open the project by a *different* path — another mount point, a
-> symlinked route — Claude Code computes a different directory and will not see this memory.
+> **The risk, stated plainly.** `~/.claude/projects/<sanitized-cwd>/memory` is Claude Code's own
+> internal layout. It is not a documented, promised-stable interface, and this project has no special
+> standing to rely on it. If that layout changes in a future release, the symlink stops corresponding
+> to anything the harness looks at — and the failure is **silent**: memory simply stops being read or
+> written, with no error. Nothing here can detect that on your behalf.
+>
+> That is a real bet, made deliberately, because the alternative — memory living in the disposable
+> half of a container — fails more often and more expensively. But it is a bet, and you should make
+> it knowingly rather than inherit it from a default. If you would rather not, `--no-invert-memory`
+> costs you nothing except durability across rebuilds.
+>
+> **Two related caveats.** The harness path is derived from the target path with `/` replaced by `-`,
+> so opening the project by a *different* route — another mount point, a symlinked path — makes
+> Claude Code compute a different directory that will not see this memory. And `store/` is
+> gitignored, so anything that deletes ignored files (`git clean -xdf`, a fresh clone) removes the
+> link's target; re-running `install.sh` detects that and repairs it.
+>
+> **To undo it**, move the real files back and drop the link:
+>
+> ```sh
+> auto=~/.claude/projects/"$(pwd | tr / -)"/memory
+> rm "$auto"                                  # remove the symlink, not its target
+> mkdir -p "$(dirname "$auto")"
+> mv .claude/memory/store "$auto"             # put the real files back
+> ```
+>
+> The session-log chain in `.claude/memory/session_logs/` is unaffected — it never lived in the
+> memory directory, by design.
 
 #### From here on
 
