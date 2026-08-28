@@ -254,7 +254,34 @@ if [ "$INVERT" = 1 ]; then
   say "     -> $store"
   say "        (--no-invert-memory skips this. That path holds only this"
   say "        project's memory, and the move is what survives a rebuild.)"
-  if [ -L "$auto" ]; then say "memory: already a symlink -> $(readlink "$auto") ✅"
+  if [ -L "$auto" ]; then
+    # ⚠ An existing symlink is NOT proof of a working setup. It can point at a
+    # target that no longer exists — `store/` is gitignored, so `git clean -xdf`,
+    # a fresh clone, or a deleted-and-recreated project all leave the link behind
+    # and its target gone. Reporting ✅ on that is worse than failing: the harness
+    # memory dir silently resolves to nothing and memory quietly stops working.
+    # So: resolve it, and repair if it dangles.
+    link_target=$(readlink "$auto")
+    if [ "$link_target" != "$store" ]; then
+      say "memory: ⚠ harness dir is a symlink to a DIFFERENT place:"
+      say "          $link_target"
+      say "        expected $store"
+      say "        Leaving it untouched — two projects may share a path, or this"
+      say "        one moved. Resolve by hand before relying on memory."
+    elif [ -f "$auto/MEMORY.md" ]; then
+      say "memory: already inverted, and the link resolves ✅"
+    elif [ "$DRY" = 1 ]; then
+      say "would: repair dangling memory link (target $store is missing)"
+    else
+      mkdir -p "$store"
+      [ -f "$store/MEMORY.md" ] || printf '# Memory index\n' > "$store/MEMORY.md"
+      if [ -f "$auto/MEMORY.md" ]; then
+        say "memory: link existed but its target did not — REPAIRED ✅"
+        say "        (recreated $store; any memory it once held is gone)"
+      else
+        say "memory: ⚠ link still does not resolve after repair. Inspect $auto"
+      fi
+    fi
   elif [ "$DRY" = 1 ]; then say "would: invert $auto -> $store"
   else
     mkdir -p "$store"

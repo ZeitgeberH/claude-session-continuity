@@ -71,6 +71,17 @@ Find the directory that holds `MEMORY.md`:
 
 The hook resolves `PROJECT/.claude-memory/session_logs` (or `.claude/memory/session_logs`) at runtime, so `MEM` must be reachable under one of those.
 
+> **★ A symlink existing is not proof the memory dir works — resolve it.** If the harness memory dir
+> is already a symlink, test that it *resolves* (`[ -f "$auto/MEMORY.md" ]`), not merely that it is a
+> link. A dangling link is a real, observed state: `store/` is gitignored, so `git clean -xdf`, a
+> fresh clone, or deleting and recreating the project leaves the link in `~/.claude/` pointing at a
+> target that no longer exists. The failure is silent — the harness memory dir resolves to nothing
+> and memory quietly stops working, while every check that only asks "is it a symlink?" reports
+> success. If it dangles, recreate the target (`store/` plus an empty `MEMORY.md`) and say that you
+> repaired it, noting any memory it held is gone. If it resolves somewhere *other* than this
+> project's `store/`, leave it alone and tell the user: that is a collision, not a fault to
+> overwrite.
+
 > **Never point a link from the project OUT to the auto-memory dir.** The obvious move —
 > `PROJECT/.claude-memory -> <auto-memory-dir>` — creates an **absolute host path** inside the project
 > tree. It works on the host and **breaks the moment the project is opened anywhere the host path does
