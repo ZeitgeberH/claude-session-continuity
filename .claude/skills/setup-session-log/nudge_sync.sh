@@ -10,14 +10,18 @@
 #     a context that is already full — the moment it is most likely to fail.
 #
 # TWO TRIGGERS, configured in .claude/hooks/sync-nudge.conf:
-#   PreCompact — fires just before context is compacted, which is the moment
-#     detail is actually about to be lost. Rare, precise, on by default. There is
-#     no "context is N% full" hook input to key off instead: no hook event
-#     receives context-window usage or token counts at all.
-#   Stop — fires every turn; nudges every NUDGE_EVERY_TURNS turns. Off by default
-#     (0). A turn count cannot tell a natural checkpoint from the middle of a
-#     debugging chain, so it is a blunt instrument — useful as a backstop, not as
-#     the primary trigger.
+#   Stop — fires at the end of every turn; nudges every NUDGE_EVERY_TURNS turns.
+#     THIS IS THE ONE THAT WORKS, and it is on by default. A turn boundary is a
+#     moment the model can actually act on: it has a turn, and context to spare.
+#   PostCompact — fires after context has been compacted. NOT PreCompact: the docs
+#     are explicit that "there is no turn between the PreCompact hook running and
+#     compaction happening", so a PreCompact nudge cannot be acted on before the
+#     detail it wanted to save is already gone. PostCompact at least lands where
+#     the model has a turn, and can salvage what survived compaction.
+#
+# ★ WHY NOT A CONTEXT-PERCENTAGE TRIGGER. No hook event receives context-window
+# usage or token counts, so "sync at 40% full" cannot be implemented at all — only
+# guessed at. Turn count is the honest approximation.
 #
 # CONDITION-AWARE: the turn counter resets whenever the chain head is actually
 # written, so a session that syncs on its own is never nagged. Silent when no
@@ -27,8 +31,8 @@ proj="${CLAUDE_PROJECT_DIR:-$PWD}"
 conf="$proj/.claude/hooks/sync-nudge.conf"
 state="$proj/.claude/hooks/.sync-nudge.state"
 
-NUDGE_ON_COMPACT=1        # nudge before compaction
-NUDGE_EVERY_TURNS=0       # 0 = never nudge on turn count
+NUDGE_ON_COMPACT=1        # nudge after a compaction
+NUDGE_EVERY_TURNS=25      # 0 disables; this is the trigger that can actually be acted on
 [ -f "$conf" ] && . "$conf"
 
 payload=$(cat 2>/dev/null || echo '{}')
@@ -56,15 +60,17 @@ emit() {   # $1 = hookEventName, $2 = text
 }
 
 case "$event" in
-  PreCompact)
+  PostCompact)
     [ "$NUDGE_ON_COMPACT" = "1" ] || exit 0
-    emit PreCompact "=== SESSION-LOG: context is about to be compacted ===
-Detail from this session is about to be summarised away. Anything learned but not yet
-written down will be harder to recover afterwards.
+    emit PostCompact "=== SESSION-LOG: context was just compacted ===
+Detail from earlier in this session has been summarised away. Whatever you had learned but
+not written down is now only as good as the summary you are left with — it will not get
+better, and further compactions will erode it again.
 
-ACTION: run /sync-mem now, before continuing — it appends this session's findings to the
-log chain and saves what is durable to memory. If you have already synced since the last
-substantive work, say so briefly and carry on; do not sync twice for nothing."
+ACTION: check the session-log chain head. If it does not already cover this session's work,
+run /sync-mem NOW and record what you still know, while you still know it. Say plainly in
+the log if a finding is one you can no longer fully reconstruct — a hedged note is worth
+more to the next session than a confident guess."
     ;;
   Stop)
     [ "$NUDGE_EVERY_TURNS" -gt 0 ] 2>/dev/null || exit 0

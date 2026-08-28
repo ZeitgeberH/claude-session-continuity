@@ -14,7 +14,7 @@
 #   ./install.sh --create ~/new-proj      scaffold the project first, then install
 #   ./install.sh --no-invert-memory ~/proj
 #   ./install.sh --no-transcripts ~/proj      skip the transcript mirror
-#   ./install.sh --nudge-turns 25 ~/proj      also remind every 25 turns
+#   ./install.sh --nudge-turns 40 ~/proj      change the reminder cadence (0 = off)
 #   ./install.sh --no-sync-nudge ~/proj       no sync reminders at all
 #   ./install.sh --retention-days 30 ~/proj   rotate mirrored transcripts
 #   ./install.sh -y ~/proj                    take every default, ask nothing
@@ -45,7 +45,7 @@ SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DRY=0; INVERT=1; CREATE=0; TARGET=""; ASSUME_YES=0
 INVERT_SET=0; RETENTION_DAYS=0; RETENTION_SET=0   # 0 days = keep forever (default)
 MIRROR=1; MIRROR_SET=0                            # copy transcripts into the project (default)
-NUDGE=1; NUDGE_TURNS=0                            # remind before compaction; not on turn count
+NUDGE=1; NUDGE_TURNS=25                           # remind every N turns, and after a compaction
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run)          DRY=1 ;;
@@ -240,21 +240,23 @@ if [ "$NUDGE" = 1 ]; then
   else
     cat > "$TARGET/.claude/hooks/sync-nudge.conf" <<CONF
 # When to remind the agent to run /sync-mem (read by nudge_sync.sh).
-# NUDGE_ON_COMPACT: remind just before context is compacted — the moment detail is lost.
-# NUDGE_EVERY_TURNS: also remind every N turns; 0 disables. A turn count cannot tell a
-# checkpoint from mid-task, so keep it high or leave it off.
+# NUDGE_EVERY_TURNS: remind every N turns; 0 disables. This is the trigger that can
+#   actually be acted on — a turn boundary gives the model a turn, and context to spare.
+# NUDGE_ON_COMPACT: also remind AFTER a compaction, to salvage what survived it. Not
+#   before: there is no turn between a PreCompact hook and compaction, so a nudge there
+#   cannot be acted on until the detail it wanted to save is already gone.
 NUDGE_ON_COMPACT=1
 NUDGE_EVERY_TURNS=$NUDGE_TURNS
 CONF
     if [ "$NUDGE_TURNS" -gt 0 ] 2>/dev/null; then
-      say "sync reminders: before compaction, and every ${NUDGE_TURNS} turns ✅"
+      say "sync reminders: every ${NUDGE_TURNS} turns, and after a compaction ✅"
     else
-      say "sync reminders: before compaction only ✅ (--nudge-turns N adds a periodic one)"
+      say "sync reminders: after a compaction only (--nudge-turns N is the reliable one)"
     fi
   fi
 else
   say "sync reminders: off. /sync-mem is then entirely manual — nothing will prompt"
-  say "                you before a compaction discards session detail."
+  say "                you, and a compaction can discard unsaved session detail."
 fi
 run chmod +x "$TARGET/.claude/skills/setup-session-log/inject_session_log.sh" \
               "$TARGET/.claude/skills/setup-session-log/save_transcripts.sh" \
@@ -284,7 +286,7 @@ if sys.argv[3] == "1":     # transcript mirror wanted
     if int(sys.argv[2]) > 0:   # rotation too — prune after the mirror, once per session
         reg["SessionEnd"].append((f"{B}/prune_transcripts.sh", 10, "Pruning old transcripts..."))
 if sys.argv[4] == "1":     # sync reminders
-    reg["PreCompact"] = [(f"{B}/nudge_sync.sh", 10, "Checking session-log state...")]
+    reg["PostCompact"] = [(f"{B}/nudge_sync.sh", 10, "Checking session-log state...")]
     if int(sys.argv[5]) > 0:
         reg.setdefault("Stop", []).append((f"{B}/nudge_sync.sh", 10, "Checking session-log state..."))
 hooks, added = cfg.setdefault("hooks", {}), 0
