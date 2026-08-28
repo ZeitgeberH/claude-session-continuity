@@ -5,19 +5,22 @@
 # run shell commands, not skills — and it deliberately does not force the issue by
 # blocking. It adds context asking the agent to sync. Two reasons:
 #   - Blocking a turn (exit 2) hijacks whatever the user was mid-way through. A
-#     sync forced at an arbitrary point often has nothing durable to save yet.
-#   - On PreCompact especially, blocking means starting a substantial operation in
-#     a context that is already full — the moment it is most likely to fail.
+#     sync forced at an arbitrary point often has nothing durable to save yet, so
+#     the interruption buys nothing.
 #
-# TWO TRIGGERS, configured in .claude/hooks/sync-nudge.conf:
-#   Stop — fires at the end of every turn; nudges every NUDGE_EVERY_TURNS turns.
-#     THIS IS THE ONE THAT WORKS, and it is on by default. A turn boundary is a
-#     moment the model can actually act on: it has a turn, and context to spare.
-#   PostCompact — fires after context has been compacted. NOT PreCompact: the docs
-#     are explicit that "there is no turn between the PreCompact hook running and
-#     compaction happening", so a PreCompact nudge cannot be acted on before the
-#     detail it wanted to save is already gone. PostCompact at least lands where
-#     the model has a turn, and can salvage what survived compaction.
+# ONE TRIGGER: Stop, every NUDGE_EVERY_TURNS turns (see sync-nudge.conf).
+# A turn boundary is a moment the model can actually act on — it has a turn, and
+# context to spare.
+#
+# ★ TWO COMPACTION TRIGGERS WERE TRIED AND BOTH REMOVED.
+#   PreCompact cannot work: the hooks reference states there is "no turn between
+#     the PreCompact hook running and compaction happening", so the nudge could not
+#     be acted on until the detail it wanted to save was already gone. It looked
+#     healthy — registered, firing, well-formed output — and did nothing.
+#   PostCompact works mechanically but is not worth having: by then the detail IS
+#     gone, so the sync it prompts records a degraded second-hand summary. That is
+#     worse than no entry, because the chain's value rests on its entries being
+#     trustworthy. Prompting for a low-confidence write pollutes it.
 #
 # ★ WHY NOT A CONTEXT-PERCENTAGE TRIGGER. No hook event receives context-window
 # usage or token counts, so "sync at 40% full" cannot be implemented at all — only
@@ -31,8 +34,7 @@ proj="${CLAUDE_PROJECT_DIR:-$PWD}"
 conf="$proj/.claude/hooks/sync-nudge.conf"
 state="$proj/.claude/hooks/.sync-nudge.state"
 
-NUDGE_ON_COMPACT=1        # nudge after a compaction
-NUDGE_EVERY_TURNS=25      # 0 disables; this is the trigger that can actually be acted on
+NUDGE_EVERY_TURNS=25      # nudge every N turns; 0 disables
 [ -f "$conf" ] && . "$conf"
 
 payload=$(cat 2>/dev/null || echo '{}')
@@ -60,18 +62,6 @@ emit() {   # $1 = hookEventName, $2 = text
 }
 
 case "$event" in
-  PostCompact)
-    [ "$NUDGE_ON_COMPACT" = "1" ] || exit 0
-    emit PostCompact "=== SESSION-LOG: context was just compacted ===
-Detail from earlier in this session has been summarised away. Whatever you had learned but
-not written down is now only as good as the summary you are left with — it will not get
-better, and further compactions will erode it again.
-
-ACTION: check the session-log chain head. If it does not already cover this session's work,
-run /sync-mem NOW and record what you still know, while you still know it. Say plainly in
-the log if a finding is one you can no longer fully reconstruct — a hedged note is worth
-more to the next session than a confident guess."
-    ;;
   Stop)
     [ "$NUDGE_EVERY_TURNS" -gt 0 ] 2>/dev/null || exit 0
     count=0; last_fp=""

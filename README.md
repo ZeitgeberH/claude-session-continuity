@@ -235,7 +235,7 @@ and relocate the project's memory dir into the project (below). Both are re-runn
 | `--no-transcripts` | Don't copy session transcripts into the project |
 | `--transcripts` | Copy them — the default; accepted for explicitness |
 | `--retention-days N` | Delete mirrored transcripts older than N days (`0` = keep forever, the default) |
-| `--nudge-turns N` | Remind to `/sync-mem` every N turns (default 25; `0` = only after a compaction) |
+| `--nudge-turns N` | Remind to `/sync-mem` every N turns (default 25; `0` installs the hook but disables it) |
 | `--no-sync-nudge` | No sync reminders at all |
 | `-y`, `--yes` | Take every default; ask nothing, even on a terminal |
 | `-h`, `--help` | Print usage and exit |
@@ -364,31 +364,25 @@ the ability to drill from a session log into its raw transcript.
 #### Reminders to save
 
 `/sync-mem` is invoked, not automatic — so the obvious failure is forgetting, and losing a session's
-findings. Two hooks remind the agent.
+findings. A `Stop` hook nudges the agent every **`--nudge-turns N`** turns (default 25).
 
-**Every N turns (`--nudge-turns N`, default 25).** This is the trigger that works. A turn boundary is
-a moment the agent can actually act on: it has a turn, and context to spare. The counter resets
-whenever the chain head is written, so a session that syncs on its own is never nagged. Keep N
-highish — a turn count cannot tell a natural checkpoint from the middle of a debugging chain, and a
-sync forced with nothing durable to save is churn.
+A turn boundary is the one moment a reminder can actually be used: the agent has a turn, and context
+to spare. The counter resets whenever the chain head is written, so a session that syncs on its own
+is never nagged. Keep N highish — a turn count cannot tell a natural checkpoint from the middle of a
+debugging chain, and a sync forced with nothing durable to save is churn. The nudge never blocks, and
+says not to interrupt what you asked for in order to sync.
 
-**After a compaction.** Compaction is when unsaved detail is actually lost, so the reminder fires on
-`PostCompact`, telling the agent to record what survived while it still can.
+The cadence lives in `.claude/hooks/sync-nudge.conf` and is read at runtime, so you can change it
+there without re-running the installer. `--no-sync-nudge` skips the hook entirely.
 
-> **Why not *before* compaction?** It was built that way first, and it does not work. The hooks
-> reference states there is **no turn between the `PreCompact` hook running and compaction
-> happening** — so a nudge there cannot be acted on until the detail it wanted to save is already
-> gone. `PostCompact` at least lands where the agent has a turn. Blocking compaction with exit 2 was
-> considered and rejected: it would start a substantial operation in a context that is already full,
-> which is when it is most likely to fail, and it risks wedging a session that cannot proceed without
-> compacting.
->
-> There is also no "remind me at 40% context" option, because **no hook event receives
-> context-window usage or token counts**. Any such threshold would be guesswork dressed as a
-> measurement. Turn count is the honest approximation.
-
-Neither reminder blocks; both say not to interrupt what you asked for in order to sync. Turn both off
-with `--no-sync-nudge`.
+> **There is no compaction trigger, and no context-percentage trigger.** Both were built and removed.
+> `PreCompact` cannot work: the hooks reference states there is **no turn between the `PreCompact`
+> hook running and compaction happening**, so the nudge could not be acted on until the detail it
+> wanted to save was already gone — it was registered, firing, and useless. `PostCompact` works
+> mechanically but by then the detail *is* gone, so the sync it prompts records a degraded
+> second-hand summary; that is worse than no entry, because the chain is only worth reading if its
+> entries can be trusted. And "remind me at 40% context" is not implementable at all — **no hook
+> event receives context-window usage or token counts**.
 
 #### Working
 

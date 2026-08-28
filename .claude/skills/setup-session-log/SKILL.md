@@ -13,12 +13,13 @@ Four components get installed:
 1. **The chain** — `<memory>/session_logs/session_NNN_YYYY-MM-DD.md`, one per session, linked by `prev:`/`next:` frontmatter, each carrying its `session_id`/`transcript` pointer (an index INTO the raw transcript).
 2. **The auto-inject hook** — a `SessionStart` hook (`inject_session_log.sh`) that prints the chain head into every new session's context. Deterministic — no reliance on the agent following a pointer, so no "read the log first" reminder is needed in CLAUDE.md. It also carries a built-in staleness check (see below), and a bootstrap notice: when the skills and hooks are installed but no chain exists yet — the state `install.sh` leaves behind — it injects an instruction to run `/setup-session-log`, so the user never has to remember a follow-up command. That notice fires only while the chain is missing.
 3. **The transcript mirror** — a `SessionEnd` + `Stop` hook (`save_transcripts.sh`) that copies the raw `.jsonl` transcripts into `<project>/.claude-transcripts/`. **Without it the chain advertises a drill-down it cannot honour**: every log's `transcript:` field points into `~/.claude/projects/…`, which is *not* durable. In a real devcontainer project a rebuild destroyed ~4 months of transcripts — all 39 logs survived (they live in the project) but every `transcript:` pointer in them died. The chain is the curated layer; this makes the raw layer as durable as the project.
-4. **Sync reminders** (`nudge_sync.sh`) — a `Stop` hook nudging the agent to run `/sync-mem` every
-   `NUDGE_EVERY_TURNS` turns (default 25), plus a `PostCompact` hook to salvage what survived a
-   compaction. Deliberately **not** `PreCompact`: there is no turn between that hook and compaction,
-   so a nudge there cannot be acted on before the detail it wanted to save is gone. Both only add
-   context; neither blocks. No context-percentage trigger exists because no hook event receives
-   context-window usage or token counts.
+4. **A sync reminder** (`nudge_sync.sh`) — a `Stop` hook nudging the agent to run `/sync-mem` every
+   `NUDGE_EVERY_TURNS` turns (default 25, read at runtime from `sync-nudge.conf`). Register it
+   whenever reminders are wanted, **even at 0 turns**: the count is a runtime setting, so a hook
+   registered only when it is non-zero makes the config file silently inert. Compaction triggers were
+   tried and removed — `PreCompact` cannot be acted on (no turn between it and compaction) and
+   `PostCompact` fires when the detail is already gone. No context-percentage trigger exists, because
+   no hook event receives context-window usage or token counts.
 5. **The maintenance protocol** — written into the project so `/sync-mem` (or session end) APPENDS a new log + continuity check rather than overwriting.
 
 > **★ The staleness check has two modes and a third state that announces itself.** If any work file

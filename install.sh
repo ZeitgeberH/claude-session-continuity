@@ -240,23 +240,23 @@ if [ "$NUDGE" = 1 ]; then
   else
     cat > "$TARGET/.claude/hooks/sync-nudge.conf" <<CONF
 # When to remind the agent to run /sync-mem (read by nudge_sync.sh).
-# NUDGE_EVERY_TURNS: remind every N turns; 0 disables. This is the trigger that can
-#   actually be acted on — a turn boundary gives the model a turn, and context to spare.
-# NUDGE_ON_COMPACT: also remind AFTER a compaction, to salvage what survived it. Not
-#   before: there is no turn between a PreCompact hook and compaction, so a nudge there
-#   cannot be acted on until the detail it wanted to save is already gone.
-NUDGE_ON_COMPACT=1
+# NUDGE_EVERY_TURNS: remind every N turns; 0 disables. Read at runtime, so you can
+#   change it here without re-running the installer.
+# There is no compaction trigger: PreCompact cannot be acted on (no turn between it
+#   and compaction) and PostCompact fires when the detail is already gone, so the
+#   sync it prompts would record a degraded summary.
 NUDGE_EVERY_TURNS=$NUDGE_TURNS
 CONF
     if [ "$NUDGE_TURNS" -gt 0 ] 2>/dev/null; then
-      say "sync reminders: every ${NUDGE_TURNS} turns, and after a compaction ✅"
+      say "sync reminders: every ${NUDGE_TURNS} turns ✅ (change it in sync-nudge.conf)"
     else
-      say "sync reminders: after a compaction only (--nudge-turns N is the reliable one)"
+      say "sync reminders: hook installed but disabled (NUDGE_EVERY_TURNS=0)."
+      say "                Set it in .claude/hooks/sync-nudge.conf to enable."
     fi
   fi
 else
-  say "sync reminders: off. /sync-mem is then entirely manual — nothing will prompt"
-  say "                you, and a compaction can discard unsaved session detail."
+  say "sync reminders: not installed. /sync-mem is then entirely manual — nothing"
+  say "                will prompt you, and unsaved findings can be lost."
 fi
 run chmod +x "$TARGET/.claude/skills/setup-session-log/inject_session_log.sh" \
               "$TARGET/.claude/skills/setup-session-log/save_transcripts.sh" \
@@ -285,10 +285,11 @@ if sys.argv[3] == "1":     # transcript mirror wanted
     reg["Stop"]       = [(f"{B}/save_transcripts.sh", 15, "Mirroring transcripts...")]
     if int(sys.argv[2]) > 0:   # rotation too — prune after the mirror, once per session
         reg["SessionEnd"].append((f"{B}/prune_transcripts.sh", 10, "Pruning old transcripts..."))
-if sys.argv[4] == "1":     # sync reminders
-    reg["PostCompact"] = [(f"{B}/nudge_sync.sh", 10, "Checking session-log state...")]
-    if int(sys.argv[5]) > 0:
-        reg.setdefault("Stop", []).append((f"{B}/nudge_sync.sh", 10, "Checking session-log state..."))
+if sys.argv[4] == "1":     # sync reminders — always register, even at 0 turns.
+    # The cadence lives in sync-nudge.conf and the script reads it at runtime. If the
+    # hook were only registered when the count is non-zero, editing that conf later
+    # would silently do nothing, which is exactly what happened to one install.
+    reg.setdefault("Stop", []).append((f"{B}/nudge_sync.sh", 10, "Checking session-log state..."))
 hooks, added = cfg.setdefault("hooks", {}), 0
 for event, entries in reg.items():
     matchers = hooks.setdefault(event, [])
