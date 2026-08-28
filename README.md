@@ -51,25 +51,13 @@ git clone https://github.com/ZeitgeberH/agentSkills_mem
 
 ### New project
 
-Two steps: one shell command, then start Claude Code.
-
-| Step | What happens | Where you do it |
-|---|---|---|
-| **1** | Create the folder, install the skills, make the first commit | your shell |
-| **2** | Start Claude Code — it creates the session-log chain and commits it | first Claude Code session |
-
-You do not have to remember Step 2 — starting the session is enough, and Claude is told what to do.
-There is no third step: **start working straight away.** From your next session onward, whenever that
-is, the previous session's summary loads automatically before you type anything.
-
-Step 2 is separate from Step 1 only because skills and hooks are registered when a session **starts**,
-so the installer cannot use them itself.
-
-#### Step 1: Initialize the project folder
-
 ```sh
 ./agentSkills_mem/install.sh --create ~/new-project
 ```
+
+**That one command is the whole setup.** After it, you just use Claude Code normally — your first
+session notices the chain is missing, creates it, and commits it, without you asking. See
+[your first session](#your-first-session-nothing-to-do).
 
 **It asks you two questions.** Press Enter twice to take the defaults — memory in the project
 folder, transcripts kept forever. Both are explained under
@@ -150,40 +138,14 @@ session log being written for it. In a git repo it checks with `git status` — 
 Without one it falls back to walking the file tree, which is slower and needs tuning on projects
 with big data folders. A repo also lets each log's "Done this session" sit next to real commits.
 
-#### Step 2: Initialize the session-log chain
-
-Just start Claude Code in the project:
-
-```sh
-cd ~/new-project && claude
-```
-
-The `SessionStart` hook notices the chain is missing and tells Claude to create it, so Claude runs
-`/setup-session-log` and says so. You can also run `/setup-session-log` yourself if you prefer — it
-is the same thing. The notice appears only while there is no chain, so you see it once.
-
-It writes `session_logs/session_001_<today>.md` — the first entry in the chain — along with the
-memory index and the protocol file that later sessions follow. It is idempotent: it detects what
-Step 1 already installed and only fills in the rest, so it will report the hooks and settings as
-already in place. That is the expected handoff, not a problem.
-
-It also commits what it wrote, since on a project this new the only uncommitted files are the ones it
-just created. (If anything else is uncommitted it leaves the commit to you, rather than sweeping up
-work you had in flight.)
-
-**Then just work.** You do not need to restart: this session already knows what it wrote. Run
-`/sync-mem` at checkpoints to append the next log, and from your next session onward the chain head
-loads at startup on its own.
-
-
 ### Existing project — adding to work you already have
 
 ```sh
 ./agentSkills_mem/install.sh ~/existing-project
 ```
 
-Then the same as a new project: start Claude Code, and it creates the session-log chain for you —
-see [After it runs](#after-it-runs--the-session-boundary-and-why-it-isnt-optional).
+That is the whole setup here too. Then use Claude Code normally — see
+[your first session](#your-first-session-nothing-to-do).
 
 The directory must already exist. It does **not** need a `.claude/` directory — that gets created.
 `settings.json` is merged, not overwritten: existing keys (`permissions`, `mcpServers`, other hooks)
@@ -268,31 +230,27 @@ it picks up from whatever the installer left.
 > `/` replaced by `-`. If you later open the project by a *different* path — another mount point, a
 > symlinked route — Claude Code computes a different directory and will not see this memory.
 
-#### After it runs — the session boundary, and why it isn't optional
+#### Your first session (nothing to do)
 
-`install.sh` runs in a plain shell, before Claude Code is involved at all. The installer cannot do
-this part: **skills and hooks are registered when a session starts**, not when their files appear on
-disk. So finish the install like this, exactly as `install.sh` prints on exit:
-
-```
-./install.sh [--create] ~/proj   # skills copied, hooks symlinked + registered, memory inverted
-        ↓
-cd ~/proj && claude              # skills are invocable in this session; hooks are live
-        ↓                        # the hook says the chain is missing; Claude runs
-/setup-session-log               # …this, scaffolds the chain, and commits it
-        ↓
-…work…  →  /sync-mem             # carry straight on. /sync-mem appends the next log
+```sh
+cd ~/your-project && claude
 ```
 
-There is exactly **one** boundary that matters, and it is between the installer and the session:
-skills and hooks are registered when a session **starts**, so a skill copied in mid-session is not
-invocable in that session — invoking it fails with `Unknown skill`. That is this rule showing up,
-not a broken install. If you ran the installer from *inside* a session already open on that project,
-restart that one; otherwise just start a session.
+Start Claude Code and work as you normally would. The `SessionStart` hook notices the chain does not
+exist yet and tells Claude to create it, so Claude runs `/setup-session-log`, writes
+`session_logs/session_001_<today>.md`, and commits it — then carries on with whatever you actually
+came to do. You can run `/setup-session-log` yourself if you would rather, but you do not need to
+remember it.
 
-**After the chain exists there is no further boundary.** Keep working in the same session — it wrote
-the chain, so it already knows what is in it. The `SessionStart` injection is for *later* sessions,
-which is where the value is anyway.
+Nothing else is required. Don't restart: this session wrote the chain, so it already knows what is in
+it. From your *next* session onward the previous session's summary is loaded at startup before you
+type anything, and `/sync-mem` appends a new log at each checkpoint.
+
+**One thing to know if you install by hand** rather than with `install.sh`: skills and hooks are
+registered when a session **starts**, not when their files appear on disk. A skill copied into a
+session that is already running is not invocable in it — invoking it fails with `Unknown skill`. That
+is this rule showing up, not a broken install; start a session (or restart the open one) and it
+works.
 
 If you genuinely must set up inside one session, read each `SKILL.md` and follow its procedure by
 hand, and treat the next session start as the real acceptance test.
