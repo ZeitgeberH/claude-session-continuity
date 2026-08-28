@@ -51,94 +51,96 @@ git clone https://github.com/ZeitgeberH/agentSkills_mem
 
 ### New project
 
-  ```sh
-  ./agentSkills_mem/install.sh --create ~/new-project
-  ```
-  
-  **That is the whole setup — you are ready to work.** Start Claude Code in the project and use it as
-  you normally would; your first session quietly creates and commits the session-log chain in the
-  background before getting on with what you actually came to do.
-  
-  **It asks you two questions.** Press Enter twice to take the defaults — memory in the project
-  folder, transcripts kept forever. Both are explained under
-  [Two questions it asks](#two-questions-it-asks).
-  
-  ```
-    Where should this project's memory live?
-      1) In the project folder   — travels with the project, survives a rebuild
-      2) In Claude's home folder — leave it where Claude puts it
-    Choice [1]:
-  
-    Delete old session transcripts?
-    Days [keep forever]:
-  ```
-  
-  **Then it reports each step**, roughly this:
-  
-  ```
-    created project directory ✅
-    git: initialized ✅
-    skill setup-session-log ✅
-    skill sync-mem ✅
-    hook inject_session_log.sh ✅ (symlink)
-    hook save_transcripts.sh ✅ (symlink)
-    transcripts: kept forever (no rotation).
-    settings.json ✅ (3 hook(s) added, existing keys preserved)
-    gitignore ✅ (transcripts + memory store; the chain stays tracked)
-    memory: relocating this project's memory dir INTO the project.
-            ~/.claude/projects/-home-you-new-project/memory
-         -> ~/new-project/.claude/memory/store
-    memory: inverted ✅ (verified by reading MEMORY.md back through the link)
-    git: initial commit ✅ (8de4f69)
-  ```
-  
-  Every line is a check, not just a log: the memory move is confirmed by reading the file back through
-  the new link, and it rolls itself back if that fails. If something was already in place, it says so
-  and leaves it alone — the script is safe to re-run.
-  
-  **What you end up with:**
-  
-  ```
-  ~/new-project/
-  ├── .claude/
-  │   ├── hooks/                    → symlinks into skills/, so updating the skill updates the hook
-  │   │   ├── inject_session_log.sh
-  │   │   └── save_transcripts.sh
-  │   ├── memory/store/MEMORY.md    ← the real memory files now live here
-  │   ├── settings.json             ← the three hooks, registered
-  │   └── skills/
-  │       ├── setup-session-log/
-  │       └── sync-mem/
-  └── .gitignore                    ← ignores transcripts + memory store
-  ```
-  
-  Plus one thing outside the project: `~/.claude/projects/<...>/memory` is now a symlink pointing at
-  `~/new-project/.claude/memory/store`.
-  
-  And one commit:
-  
-  ```
-  8de4f69 Initial commit: session-log + memory continuity system
-  ```
-  
-  **What is not there yet:** `session_logs/`. That is Step 2's job, below — its absence here is
-  expected, not a failed install.
-  
-  **Two things worth knowing:**
-  
-  - `--create` is a flag, not automatic. A mistyped path would otherwise install into a new wrong
-    directory and report success. It also refuses if the *parent* folder is missing — it makes a
-    project, not a whole path.
-  - `--create` is the only mode that commits, because it is the only mode where the repo holds nothing
-    but what the installer just put there. If the commit fails (no `user.name` / `user.email`) it says
-    so instead of continuing quietly.
-  
-  **Why it runs `git init` for you:** the `SessionStart` hook warns when work happened without a
+```sh
+./agentSkills_mem/install.sh --create ~/new-project
+```
+
+**That is the whole setup — you are ready to work.** Start Claude Code in the project and use it as
+you normally would; your first session quietly creates and commits the session-log chain in the
+background before getting on with what you actually came to do.
+
+#### What it asks
+
+Two questions. Press Enter twice to take the defaults — memory in the project folder, transcripts
+kept forever. Both are explained under [Two questions it asks](#two-questions-it-asks).
+
+```
+  Where should this project's memory live?
+    1) In the project folder   — travels with the project, survives a rebuild
+    2) In Claude's home folder — leave it where Claude puts it
+  Choice [1]:
+
+  Delete old session transcripts?
+  Days [keep forever]:
+```
+
+#### What it prints
+
+Each step as it happens, roughly this:
+
+```
+  created project directory ✅
+  git: initialized ✅
+  skill setup-session-log ✅
+  skill sync-mem ✅
+  hook inject_session_log.sh ✅ (symlink)
+  hook save_transcripts.sh ✅ (symlink)
+  transcripts: kept forever (no rotation).
+  settings.json ✅ (3 hook(s) added, existing keys preserved)
+  gitignore ✅ (transcripts + memory store; the chain stays tracked)
+  memory: relocating this project's memory dir INTO the project.
+          ~/.claude/projects/-home-you-new-project/memory
+       -> ~/new-project/.claude/memory/store
+  memory: inverted ✅ (verified by reading MEMORY.md back through the link)
+  git: initial commit ✅ (8de4f69)
+```
+
+Every line is a check, not just a log: the memory move is confirmed by reading the file back through
+the new link, and it rolls itself back if that fails. If something was already in place, it says so
+and leaves it alone — the script is safe to re-run.
+
+#### What you end up with
+
+```
+~/new-project/
+├── .claude/
+│   ├── hooks/                    → symlinks into skills/, so updating the skill updates the hook
+│   │   ├── inject_session_log.sh
+│   │   └── save_transcripts.sh
+│   ├── memory/store/MEMORY.md    ← the real memory files now live here
+│   ├── settings.json             ← the three hooks, registered
+│   └── skills/
+│       ├── setup-session-log/
+│       └── sync-mem/
+└── .gitignore                    ← ignores transcripts + memory store
+```
+
+Plus one thing outside the project: `~/.claude/projects/<...>/memory` is now a symlink pointing at
+`~/new-project/.claude/memory/store`.
+
+And one commit:
+
+```
+8de4f69 Initial commit: session-log + memory continuity system
+```
+
+`session_logs/` is deliberately **not** there yet — your first Claude Code session creates it. Its
+absence at this point is expected, not a failed install.
+
+#### Good to know
+
+- **`--create` is a flag, not automatic.** A mistyped path would otherwise install into a new wrong
+  directory and report success. It also refuses if the *parent* folder is missing — it makes a
+  project, not a whole path.
+- **It is the only mode that commits**, because it is the only one where the repo holds nothing but
+  what the installer just put there. If the commit fails (no `user.name` / `user.email`) it says so
+  instead of continuing quietly.
+- **It runs `git init` for you** because the `SessionStart` hook warns when work happened without a
   session log being written for it. In a git repo it checks with `git status` — fast and exact.
   Without one it falls back to walking the file tree, which is slower and needs tuning on projects
   with big data folders. A repo also lets each log's "Done this session" sit next to real commits.
 
-### Existing project — adding to work you already have
+### Existing project
 
 ```sh
 ./agentSkills_mem/install.sh ~/existing-project
@@ -147,26 +149,33 @@ git clone https://github.com/ZeitgeberH/agentSkills_mem
 That is the whole setup here too — you are ready to work. Your first session creates and commits the
 session-log chain in the background.
 
-The directory must already exist. It does **not** need a `.claude/` directory — that gets created.
-`settings.json` is merged, not overwritten: existing keys (`permissions`, `mcpServers`, other hooks)
-are preserved, and re-running adds nothing twice.
+#### How it differs from a new project
 
-**This mode never commits.** Your tree may hold unrelated in-flight work, and sweeping that into a
-commit nobody asked for is exactly the surprise this tool refuses to spring — the same rule
-`/sync-mem` follows when it reports git state but won't act on it. Commit the install yourself,
-alongside whatever else is in flight.
+- **The directory must already exist.** It does *not* need a `.claude/` directory — that gets
+  created.
+- **`settings.json` is merged, not overwritten.** Existing keys (`permissions`, `mcpServers`, other
+  hooks) are preserved, and re-running adds nothing twice.
+- **It never commits.** Your tree may hold unrelated in-flight work, and sweeping that into a commit
+  nobody asked for is exactly the surprise this tool refuses to spring — the same rule `/sync-mem`
+  follows when it reports git state but won't act on it. Commit the install yourself, alongside
+  whatever else is in flight.
 
-This is the common case: the payoff here is long-horizon work, and long-horizon work usually already
-has a repo. (It's also why this repo isn't a GitHub template — a template serves only brand-new
-projects, hands the clone this repo's README and identity, and leaves no path for upstream fixes to
-arrive.)
+> This is the common case. The payoff here is long-horizon work, and long-horizon work usually
+> already has a repo — which is also why this repo isn't a GitHub template. A template serves only
+> brand-new projects, hands the clone this repo's README and identity, and leaves no path for
+> upstream fixes to arrive.
 
-**If it isn't a git repository yet,** run `git init` and commit soon after — between `init` and the
-first commit every file is untracked, which needlessly widens the staleness check's candidate set.
-Initializing later is not fatal: the hook probes for a repo at runtime every session and upgrades
-itself. Commit the chain (`session_logs/`) — it's the shareable layer — and gitignore
-`.claude-transcripts/` and `.claude/memory/store/`, which carry machine-specific paths and, in the
-transcripts' case, the full verbatim conversation.
+#### Not a git repository yet?
+
+Run `git init`, then commit soon after — between `init` and the first commit every file is
+untracked, which needlessly widens the staleness check's candidate set. Initializing later is not
+fatal: the hook probes for a repo at runtime every session and upgrades itself.
+
+What to track, once you do:
+
+- **Commit** `session_logs/` — the chain is the shareable layer.
+- **Gitignore** `.claude-transcripts/` and `.claude/memory/store/` — both carry machine-specific
+  paths, and the transcripts are the full verbatim conversation.
 
 ### What both modes do
 
