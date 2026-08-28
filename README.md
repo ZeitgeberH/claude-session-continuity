@@ -82,36 +82,36 @@ chain — the first log needs today's date, the session UUID, and a real summary
 > `/` replaced by `-`. If you later open the project by a *different* path — another mount point, a
 > symlinked route — Claude Code computes a different directory and will not see this memory.
 
+#### After it runs — two restarts, and why they aren't optional
+
+The installer cannot do this part: **skills and hooks are registered when a session starts**, not
+when their files appear on disk. So finish the install like this, exactly as `install.sh` prints on
+exit:
+
+```
+./install.sh ~/proj      # skills copied, hooks symlinked + registered, memory inverted
+        ↓
+RESTART the session      # the skills become invocable here
+        ↓
+/setup-session-log       # scaffolds the chain; idempotent, picks up from what install.sh left
+        ↓
+RESTART the session      # the SessionStart hook fires from here on; chain head auto-injects
+        ↓
+…work…  →  /sync-mem     # appends the next log at each checkpoint
+```
+
+Skipping the restarts corrupts nothing, but nothing you installed actually *runs*: the chain head is
+never injected and the transcript mirror never fires, so the install stays untested while looking
+complete. Invoking a just-copied skill in the same session fails with `Unknown skill` — that is this
+rule showing up, not a broken install.
+
+If you genuinely must set up inside one session, read each `SKILL.md` and follow its procedure by
+hand, and treat the next session start as the real acceptance test.
+
 This works on an **existing** project, which is the common case: the payoff here is long-horizon
 work, and long-horizon work usually already has a repo. (That's also why this repo isn't a GitHub
 template — a template only serves brand-new projects, gives the clone this repo's README and
 identity, and leaves no path for upstream fixes to arrive.)
-
-### Recommended order — restart between copy and setup
-
-Skills and hooks are registered when a session **starts**, not when their files appear on disk.
-Copying a skill in mid-session and invoking it immediately fails with `Unknown skill`, and a
-`SessionStart` hook registered mid-session first fires next session. So the install runs cleanly in
-this order, and awkwardly in any other:
-
-```
-git init (+ first commit)          # see below — do this before the chain exists
-        ↓
-copy .claude/skills/{setup-session-log,sync-mem}/ into the target project
-        ↓
-RESTART the session                # skills become invocable here
-        ↓
-/setup-session-log                 # scaffolds the chain, registers the hooks
-        ↓
-RESTART the session                # hooks become active here; chain head auto-injects
-        ↓
-…work…  →  /sync-mem               # appends the next log
-```
-
-Skipping the restarts doesn't corrupt anything, but nothing you installed actually runs: the
-chain head is never injected and the transcript mirror never fires, so the install stays untested
-while looking complete. If you must set up in one session, drive it by reading each `SKILL.md` and
-following the procedure by hand — and treat the *next* session start as the real acceptance test.
 
 ### `git init` first
 
@@ -145,11 +145,6 @@ This is the same reasoning behind the transcript mirror, which copies the raw `.
 the workspace for the identical reason — a real rebuild once destroyed ~4 months of them. Together
 they're what makes a containerized project's history durable. `SKILL.md` Step 1 has the mechanics,
 including why the link must never run the other way.
-
-### The rest
-
-Then invoke `/setup-session-log` in the target project to scaffold the chain and register the
-hooks. See each skill's `SKILL.md` for full detail.
 
 ## License
 

@@ -30,7 +30,8 @@ while [ $# -gt 0 ]; do
     --dry-run)          DRY=1 ;;
     --no-invert-memory) INVERT=0 ;;
     --invert-memory)    INVERT=1 ;;   # now the default; accepted for compatibility
-    -h|--help)       sed -n '2,16p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    -h|--help)       # print the whole header block, however long it grows
+                        sed -n '2,${/^[^#]/q;p;}' "$0" | sed 's/^# \?//'; exit 0 ;;
     -*)              echo "unknown flag: $1" >&2; exit 2 ;;
     *)               TARGET="$1" ;;
   esac
