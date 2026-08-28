@@ -134,8 +134,37 @@ After the audit, persist the ephemeral state long-term memory deliberately drops
 
 **Branch on whether the session-log chain is installed.** Resolve its location by probing, in order, `$CLAUDE_PROJECT_DIR/.claude-memory/session_logs` then `$CLAUDE_PROJECT_DIR/.claude/memory/session_logs` — the same two candidates the SessionStart hook uses. It should live OUTSIDE the memory dir (`store/`) so the frontmatter normalizer cannot strip its `prev`/`next` links — "outside the memory dir" is the invariant, not any particular path. `session-log-protocol.md` is authoritative for this project's actual resolved path. The chain is present if the resolved directory holds at least one `session_*.md`; a missing chain wrongly triggers the fallback, so probe both before concluding.
 
-- **Chain present (preferred):** do NOT write `for_next_session.md`. Instead **append a new session-log** per `session-log-protocol.md` — the chain head IS the carry-over, and the SessionStart hook auto-injects it. The ephemeral sections below (Where I left off · Decisions on probation · Open questions · Working context · Skip-the-rabbit-hole) become the closing sections of that new session-log. Back-link the previous head's `next:`. This supersedes the standalone file — an append-only chain never loses history, whereas an overwritten `for_next_session.md` does.
+- **Chain present (preferred):** do NOT write `for_next_session.md`. The chain head IS the carry-over, and the SessionStart hook auto-injects it. The ephemeral sections below (Where I left off · Decisions on probation · Open questions · Working context · Skip-the-rabbit-hole) become the closing sections of the session-log. Whether that means writing a *new* log or updating the existing head is decided by the one-log-per-session rule immediately below — **check it before writing anything.**
 - **No chain (fallback):** build a fresh `<memory dir>/for_next_session.md` as described below.
+
+#### ★ One session, one log — append or update in place?
+
+**Compare the chain head's `session_id:` against the current session's UUID** (the one in your
+scratchpad path `/tmp/claude-*/<UUID>/scratchpad`, which equals the newest `.jsonl` in the harness
+`projects/<sanitized-cwd>/` dir). That comparison, not the date and not how recently the file was
+written, is what decides:
+
+| Head's `session_id` | Meaning | Do this |
+|---|---|---|
+| **≠ current session** | the head belongs to an earlier session | **Append** `session_{NNN+1}`: `prev:` = old head, back-link the old head's `next:`, refresh the `for_next_session.md` pointer. |
+| **= current session** | this session already has a log — a second `/sync-mem`, or `/setup-session-log` ran earlier in this same session | **Update that log in place.** Keep its number, date, `session_id`, `prev`/`next`. Rewrite its body sections to describe the session *as a whole so far*, and refresh `commit:`/`dirty:`. Do **not** append. |
+| **absent / unparseable** | can't prove the head is yours | **Append.** Never rewrite a log you cannot show you wrote. |
+
+**Why one session must never produce two logs.** The chain's value is that each entry corresponds to
+exactly one session, which is what lets a later reader audit whether each session did what the
+previous one asked. Two logs for one session breaks that in three ways at once: they share a
+`session_id` and `transcript` pointer, so the drill-down is ambiguous; the second log's continuity
+check is vacuous, since it would be checking this session's own "Next session should do" against
+itself; and the chain's length stops matching the number of sessions, so every count downstream is
+wrong.
+
+This is the common case on a **fresh install**, not an edge case: `/setup-session-log` writes
+`session_001` and then `/sync-mem` runs in that same session, minutes later. Updating `session_001`
+is correct there, and is the default — not a deviation to flag or ask about.
+
+**This does not conflict with "never overwrite an existing numbered log."** That rule protects
+*history* — logs belonging to sessions that have ended. Your own session's log is not yet history;
+it is the entry you are still writing. Refining it is the same act as writing it.
 
 **Why this step is last (not first).** Counter-intuitive but deliberate: (a) the audit's findings (broken paths, stale claims, coverage gaps) feed *directly* into "things to fix next session," so writing this file before the audit means missing those; (b) during Step 5 you sometimes promote an "ephemeral" item to long-term memory after deciding it's actually a generalizable lesson — writing the ephemeral file first means retracting; (c) `for_next_session.md` content typically links to long-term memory entries written in Step 5, which need to exist first. Don't reorder.
 

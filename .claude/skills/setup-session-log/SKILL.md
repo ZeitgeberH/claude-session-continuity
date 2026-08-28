@@ -293,15 +293,22 @@ Write `MEM/session-log-protocol.md` with the append rules below, and (if the pro
 
 At the end of a session (e.g. /sync-mem, or before stepping away):
 1. Find the current head = highest-numbered `session_logs/session_NNN_*.md`.
-2. **Continuity check:** read the head's "Next session should do"; the new log opens with a section marking each item DONE / DEFERRED / DROPPED (with why).
-3. Create `session_{NNN+1}_<today>.md` (prev: = old head, next: null). Sections: Continuity check, Done this session, Next session should do, Decisions on probation, Working context, Skip-the-rabbit-hole. Record `session_id`/`transcript` in frontmatter, plus `commit:` (short HEAD sha at write time) and `dirty:` so the entry is anchored to a revision.
-4. Back-link: set the previous head's `next:` to the new file.
-5. Refresh `for_next_session.md`'s pointer to the new head.
-NEVER overwrite an existing numbered log. Pass today's date + session_id in explicitly.
-6. **Commit the log with the work it describes.** The chain is tracked (unlike `store/` and
+2. **One session, one log — check this FIRST.** Compare the head's `session_id:` with the current session's UUID (from the scratchpad path `/tmp/claude-*/<UUID>/scratchpad`).
+   - **Different** → append a new log, steps 3-6 below.
+   - **Same** → this session already has a log (a second `/sync-mem`, or `/setup-session-log` ran earlier in this same session). **Update that log in place** — keep its number, date, `session_id`, `prev`/`next`; rewrite its body to cover the session as a whole so far; refresh `commit:`/`dirty:`. Then stop: no new file, no back-link, no pointer change. This is the normal case right after a fresh install, not a deviation.
+   - **Head has no `session_id`** → append. Never rewrite a log you cannot prove is yours.
+   Two logs for one session share a `session_id`/`transcript`, make the second log's continuity check vacuous (it would check this session's own next-steps against itself), and stop the chain length from matching the session count.
+3. **Continuity check:** read the head's "Next session should do"; the new log opens with a section marking each item DONE / DEFERRED / DROPPED (with why).
+4. Create `session_{NNN+1}_<today>.md` (prev: = old head, next: null). Sections: Continuity check, Done this session, Next session should do, Decisions on probation, Working context, Skip-the-rabbit-hole. Record `session_id`/`transcript` in frontmatter, plus `commit:` (short HEAD sha at write time) and `dirty:` so the entry is anchored to a revision.
+5. Back-link: set the previous head's `next:` to the new file.
+6. Refresh `for_next_session.md`'s pointer to the new head.
+7. **Commit the log with the work it describes.** The chain is tracked (unlike `store/` and
    `.claude-transcripts/`), so an uncommitted log is invisible to every clone and to the next
    machine. `/sync-mem`'s audit reports this; it does not act on it — committing stays the user's
    call.
+
+NEVER overwrite a *previous* session's log — that is history. Your own session's log is not history yet; refining it is step 2 above. Pass today's date + session_id in explicitly.
+
 ```
 
 ### Step 9 — Verify
