@@ -1,8 +1,13 @@
 # claude-session-continuity
+> The repository provides a cross-session working memory and provenance tracking framework for Claude Code. 
 
-> Cross-session continuity for Claude Code projects: an append-only chain of session logs, loaded
-> automatically at every session start, plus a skill that promotes what a session learned into
-> durable memory before it scrolls away.
+ It implements a tri-tier memory architecture designed to solve context loss, container volatility, and agent amnesia across sessions:
+
+ * Episodic Layer (Curated Chain): An append-only, doubly-linked chain of markdown session logs (`session_NNN_YYYY-MM-DD.md`) anchored to Git commit SHAs.
+ * Semantic Layer (Durable Memory): The Claude Code MEMORY.md index and topic-specific memory entries maintained via a Claude skill `sync-mem`
+ * Lossless Layer (Raw Transcripts): (**Optional**) Mirrored conversation .jsonl files stored inside the project via save_transcripts.sh to survive ephemeral environment teardowns.
+
+**Why use this.**
 
 This design works for the same reason biological memory is shaped this way: no system with bounded
 attention — human or agent — can keep everything active at once, so it needs a small "working"
@@ -11,15 +16,13 @@ provenance to know when to trust it and when to double-check. Neither the brain 
 skills got there by aesthetic choice — it's what bounded-memory systems converge on when the
 problem is "remember what matters, forget cheaply, and keep receipts."
 
-A pair of Claude Code skills for giving a long-horizon, multi-session project working memory across
-sessions. For a short-lived project, or one already tracked in an external PM tool, it's overhead
-without much payoff.
-
-**Why use this.** `setup-session-log` gives an agent a time machine for its own project memory: a
+ `setup-session-log` gives an agent a time machine for its own project memory: a
 chain of session logs linked by `prev`/`next`, walkable backward on demand. Most sessions, an agent
 doesn't travel at all — it just lives in the present, the current head, auto-injected
 automatically. But the chain is where you go when a fact needs checking: when was this believed
-true, why, and has anything changed since. `sync-mem` is what keeps a fact from getting stranded
+true, why, and has anything changed since.
+
+`sync-mem` is what keeps a fact from getting stranded
 back there — it pulls what's durable out of a session's narrative and into memory *before* that
 session becomes just another stop on the timeline, so the next agent doesn't have to travel back to
 find it. 
