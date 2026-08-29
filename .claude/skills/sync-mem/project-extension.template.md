@@ -1,12 +1,9 @@
 # /sync-mem project extension
 
-**This is an inert stub.** `/sync-mem` reads this file after its generic memory write and follows
-whatever it declares. Nothing below is active. Until you fill it in, `/sync-mem` should report
-*"project extension: stub, nothing declared"* and move on. Delete the file if you don't want one —
-the generic sync works fine without it.
-
-**A new project's extension is correctly empty.** Nothing has produced results yet, so there is
-nothing to declare. Fill it in as records accumulate.
+Skeleton, copied here by `/sync-mem` when you asked for one. It reads this file after its generic
+memory write and follows whatever it declares — so an entry takes effect at the next sync, and a
+section left empty simply declares nothing. Delete the file if you change your mind; the generic
+sync works fine without it.
 
 Three things belong here, and nothing else: files that **carry results** and so fall behind findings
 silently; **guards** deciding whether a save is admissible in this project; and state that **dies

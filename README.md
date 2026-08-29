@@ -58,9 +58,13 @@ Persists a session's durable findings — corrections, decisions, project state 
 the session-log chain, at natural checkpoints. Covers general memory plus any project-specific
 extension declared in `.claude/sync-mem-project.md`.
 
-The installer writes that extension as an **inert stub**. Nothing in it is active until you fill it
-in, and re-running never overwrites it. It exists because a documented-but-unscaffolded extension
-point is one nobody discovers.
+**Nothing creates that file for you, and an absent one is the normal state.** A project that has
+produced no records has nothing to declare. Instead, when `/sync-mem` finds no extension and notices
+that the session changed a result whose *record* lives elsewhere — a plan, a caption, a results
+write-up — it says so and offers to start one. It never creates it unasked, and it says *"no project
+extension (none needed yet)"* rather than skipping in silence, since silence is why the feature went
+undiscovered. The installer stays out of it for the same reason it does not write the first session
+log: both need a session's judgement, which a plain shell does not have.
 
 What belongs in it is three things, each depending on the project's shape and so unable to live
 anywhere else: the files that **carry results** and therefore fall behind findings silently (a plan,
@@ -143,7 +147,6 @@ Each step as it happens, roughly this:
   hook inject_session_log.sh ✅ (symlink)
   hook save_transcripts.sh ✅ (symlink)
   transcripts: kept forever (no rotation).
-  sync-mem extension: stub written ✅ (.claude/sync-mem-project.md — inert until filled in)
   settings.json ✅ (3 hook(s) added, existing keys preserved)
   gitignore ✅ (transcripts + memory store; the chain stays tracked)
   memory: relocating this project's memory dir INTO the project.
@@ -167,7 +170,6 @@ and leaves it alone — the script is safe to re-run.
 │   │   └── save_transcripts.sh
 │   ├── memory/store/MEMORY.md    ← the real memory files now live here
 │   ├── settings.json             ← the three hooks, registered
-│   ├── sync-mem-project.md      ← inert /sync-mem extension stub; fill in or delete
 │   └── skills/
 │       ├── setup-session-log/
 │       └── sync-mem/

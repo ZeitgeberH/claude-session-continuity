@@ -91,7 +91,12 @@ Check whether `<cwd>/.claude/sync-mem-project.md` exists. If yes:
 2. Follow its instructions exactly — it declares additional project-specific files to maintain (paper plans, phase write-ups, figure captions, etc.) and any project-specific guards.
 3. The extension adds *more* writes, not replacements; it never overrides the generic memory procedure above.
 
-If the file doesn't exist, skip this step silently — the skill still completes successfully on generic memory alone.
+**If the file doesn't exist**, the skill still completes on generic memory alone — but don't skip silently, because silence is why nobody discovers this feature. Instead:
+
+- **Did this session change a result whose *record* lives in another file** — a plan, a spec, a results write-up, figure captions, a README documenting behaviour? If so, say so in the report and **offer** to create the extension, e.g. *"`docs/PLAN.md` describes a phase this session completed; a project extension would declare it so future syncs check it. Want one?"* On a yes, copy `project-extension.template.md` (beside this skill) to `<cwd>/.claude/sync-mem-project.md` and fill in the entry you just identified. **Never create it unasked** — writing files the user didn't request is the same surprise this skill refuses around commits.
+- **Otherwise** report one line — *"no project extension (none needed yet)"* — and move on. A project that has produced no records has nothing to declare, and an empty extension is the correct state, not a gap.
+
+`project-extension-guide.md` (beside this skill) is the reference for what belongs in one: the three questions it answers, the admission test for what belongs in `CLAUDE.md` / memory / the chain instead, and the rules that keep it from rotting. Read it before writing or extending an extension.
 
 ### Step 7 — Audit pickup-readiness
 
