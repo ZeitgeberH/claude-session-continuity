@@ -1,60 +1,39 @@
 # /sync-mem project extension
 
 **This is an inert stub.** `/sync-mem` reads this file after its generic memory write and follows
-whatever it declares. Nothing below is active — everything is commented out. Until you uncomment or
-write something, `/sync-mem` should report *"project extension: stub, nothing declared"* and move on.
-Delete the file if you don't want one; the generic sync works fine without it.
+whatever it declares. Nothing below is active. Until you fill it in, `/sync-mem` should report
+*"project extension: stub, nothing declared"* and move on. Delete the file if you don't want one —
+the generic sync works fine without it.
 
-## What it's for
+**A new project's extension is correctly empty.** Nothing has produced results yet, so there is
+nothing to declare. Fill it in as records accumulate.
 
-The generic sync writes memory entries and the session log. It does not know about **files in your
-project that go stale when a finding changes** — a plan, a spec, a caption, a results write-up, a
-generated table — nor about project-specific guards on what may be saved. Declare those here and
-they get maintained at the same checkpoint, and audited alongside the memory entries.
+Three things belong here, and nothing else: files that **carry results** and so fall behind findings
+silently; **guards** deciding whether a save is admissible in this project; and state that **dies
+quietly** unless the session log names it.
 
-Extensions add work; they never replace or override the generic procedure.
+📖 **Before filling this in, read `.claude/skills/sync-mem/project-extension-guide.md`** — the
+admission test for what belongs (and what belongs in `CLAUDE.md`, memory, or the chain instead),
+worked entries, and the failure each rule prevents.
 
-## Rules for maintaining this file
+## 1. Files that carry results
 
-An extension that is allowed to grow becomes a second, unmaintained memory store. Three rules keep
-it from rotting — each one is a failure observed in a real long-running project:
-
-1. **Procedure, never findings.** A fact worth keeping is a memory entry. Cite it; don't restate it.
-   Restated content is the only thing here that can silently contradict its source — and when the
-   source is later revised or garbage-collected, the copy here is what survives and misleads.
-2. **Never re-specify what the skills already do.** The chain protocol, the audit, and the report
-   format live in the skills. A second copy here is free to diverge from them. Refer to steps by
-   *name* ("the audit", "the final report"), never by number — numbers shift when a skill gains a step.
-3. **Cite by identifier, not by location.** Name a flag, a config key, a function, a file. Never a
-   section heading or a line number: those move, and the pointer rots with nothing to notice.
-
-A fourth, if this file ever cites paths: **check that its own citations still resolve** as one of
-your checks. The generic audit verifies paths inside memory entries — not paths inside this file.
-
-## Files to maintain — uncomment and fill in
-
-<!--
-| File | When to touch it |
-|---|---|
-| `docs/PLAN.md`      | a phase is added, completed, or reordered |
-| `docs/RESULTS.md`   | an analysis lands a finding worth recording canonically |
-| `README.md`         | a user-facing flag, command, or default changed |
+<!-- A standing declaration, not a to-do list: most sessions touch none of them.
+**`docs/PLAN.md`** — a required write when a phase is added, completed or reordered.
 -->
 
-## Project-specific guards — uncomment and fill in
+## 2. Guards
 
-<!--
-These are the project's equivalent of the generic "do not save" rules.
-
-- **Name the filter.** Any saved numeric claim must state which filter/version produced it;
-  flag it as ambiguous rather than saving a bare number.
-- **Prefer the canonical source.** If a finding was produced with superseded scaffolding,
-  convert it before saving, or save both clearly labelled.
+<!-- Checks, not writes; surface failures in the report's "Open / ambiguous" block.
+- **G1 — <rule>.** Flag <what>, citing the criterion from `CLAUDE.md` rather than restating it.
 -->
 
-## Report augmentation — uncomment and fill in
+## 3. Carry-over
 
-<!--
-Add a "Project files" block to the final report so both layers are visible: one line per file
-touched, plus anything skipped deliberately and anything left open.
+<!-- What the session log must name because it dies quietly otherwise.
+- **Running work** and the rule it will be judged by — stated before the result is read.
 -->
+
+---
+
+Keep it lean; if a check stops earning its keep, delete the line rather than working around it.

@@ -58,12 +58,21 @@ Persists a session's durable findings — corrections, decisions, project state 
 the session-log chain, at natural checkpoints. Covers general memory plus any project-specific
 extension declared in `.claude/sync-mem-project.md`.
 
-The installer writes that extension as an **inert stub** — the extension point explained, plus three
-rules for keeping it from rotting and a commented-out example table. Nothing in it is active until
-you fill it in, and re-running never overwrites it. It exists because a documented-but-unscaffolded
-extension point is one nobody discovers: declare there the project files that go stale when a
-finding changes (a plan, a spec, a caption, a results write-up) and `/sync-mem` maintains them at
-the same checkpoint it saves memory.
+The installer writes that extension as an **inert stub**. Nothing in it is active until you fill it
+in, and re-running never overwrites it. It exists because a documented-but-unscaffolded extension
+point is one nobody discovers.
+
+What belongs in it is three things, each depending on the project's shape and so unable to live
+anywhere else: the files that **carry results** and therefore fall behind findings silently (a plan,
+a spec, a caption, a results write-up); the **guards** that decide whether a save is admissible here;
+and the state that **dies quietly** unless the session log names it. A brand-new project's extension
+is correctly empty — nothing has produced results yet.
+
+The stub is a skeleton and a pointer. The reasoning behind it — an admission test for what belongs
+here versus in `CLAUDE.md`, memory, or the chain; worked entries; and the four rules that keep an
+extension from growing into a second, unmaintained memory store — lives in
+`skills/sync-mem/project-extension-guide.md`, so it travels with the skill and improves for every
+project at once instead of being frozen into each one at install time.
 
 Before it reports, it audits what it just saved: that every path a memory entry cites still
 resolves, that nothing written is missing from the index, and that the git state is what you think
